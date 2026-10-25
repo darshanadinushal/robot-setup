@@ -29,7 +29,7 @@ Robot Setup detects these settings. It does not change them.
 | Feature | What it does | Profiles |
 |---------|--------------|----------|
 | Luna | Uses your existing Luna folder, installs system packages and creates Luna's Python environment | Minimal, Standard |
-| Offline voice | Installs the speech libraries and downloads the offline speech model | Standard |
+| Offline voice | Installs the speech libraries and downloads the offline speech models for English and Swedish (about 330 MB; Luna listens in the language of her voice) | Standard |
 | Natural voice | Installs Piper and downloads clearer English and Swedish voices, female and male (about 310 MB, see below) | Optional |
 | Automatic startup | Starts Luna full screen when the desktop opens and restarts it if it crashes | Standard |
 | Online AI | Saves your OpenAI API key and chosen model to `~/.luna.env` and checks them | Optional |

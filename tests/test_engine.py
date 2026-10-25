@@ -153,6 +153,21 @@ class EngineTests(unittest.TestCase):
         self.assertIsNone(state.data["request"])
         self.assertTrue(all(i["status"] == PENDING for i in state.tasks.values()))
 
+    def test_voice_downloads_english_and_swedish_models(self):
+        import shutil
+        from robot_setup.modules import voice
+        engine.install(self.box.context(features=("luna", "voice")))
+        swedish = self.box.paths.voice_model_for("sv")
+        self.assertTrue((swedish / "am" / "final.mdl").is_file())
+        self.assertTrue(self.box.paths.voice_model.exists())
+        calls = [args[-1] for args, _ in self.box.system.calls
+                 if any(x.endswith("download-voice-model.py") for x in args)]
+        self.assertEqual(calls, ["en", "sv"])
+        shutil.rmtree(swedish)
+        checks = {c.id: c for c in voice.verify(self.box.context(features=("luna", "voice")))}
+        self.assertEqual(checks["voice-model-sv"].status, "warning")
+        self.assertEqual(checks["voice-model"].status, "passed")
+
     def test_remove_reports_other_launchers_that_still_start_luna(self):
         engine.install(self.box.context(features=("luna", "startup")))
         autostart = self.box.home / ".config" / "labwc" / "autostart"

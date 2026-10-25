@@ -69,9 +69,9 @@ class FakeSystem:
                                          for k in keys}))
         if len(args) > 2 and args[1] == "-c":
             return Result(0, "ok")
-        if args[-1].endswith("download-voice-model.py"):
+        if any(str(a).endswith("download-voice-model.py") for a in args):
             if self.download:
-                self.download()
+                self.download(args[-1] if args[-1] in ("en", "sv") else "en")
             return Result(0, "Installed")
         if name == "systemctl":
             if "get-default" in args:
@@ -119,8 +119,8 @@ class Sandbox:
         ctx.logs = logs
         return ctx
 
-    def make_voice_model(self):
-        model = self.paths.voice_model
+    def make_voice_model(self, language="en"):
+        model = self.paths.voice_model_for(language)
         (model / "am").mkdir(parents=True)
         (model / "conf").mkdir(parents=True)
         (model / "am" / "final.mdl").write_text("")

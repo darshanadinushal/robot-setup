@@ -41,6 +41,8 @@ MIN_FREE_MB = 1024
 LUNA_DIR_CANDIDATES = ("luna", "ai-robot")
 SERVICE_NAME = "luna.service"
 VOICE_MODEL_NAME = "vosk-model-small-en-us-0.15"
+# Offline listening models; Luna listens in the language of her selected voice.
+VOICE_MODEL_NAMES = {"en": VOICE_MODEL_NAME, "sv": "vosk-model-small-sv-rhasspy-0.15"}
 
 # Python packages installed into Luna's virtual environment (tested versions).
 PIP_PINS = {"vosk": "0.3.45", "sounddevice": "0.5.6", "openai": "3.37.0",
@@ -223,7 +225,10 @@ class Paths:
 
     @property
     def voice_model(self):
-        return self.home / ".ai-robot-models" / VOICE_MODEL_NAME
+        return self.voice_model_for("en")
+
+    def voice_model_for(self, language):
+        return self.home / ".ai-robot-models" / VOICE_MODEL_NAMES[language]
 
     @property
     def piper_dir(self):
