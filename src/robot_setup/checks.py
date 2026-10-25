@@ -39,6 +39,11 @@ def _microphone(ctx):
         sample.unlink(missing_ok=True)
 
 
+def _natural_voice(ctx):
+    from .modules.piper import play_samples
+    return play_samples(ctx)
+
+
 @dataclass
 class UserCheck:
     id: str
@@ -58,6 +63,9 @@ USER_CHECKS = [
               "Play a short test sentence.", _speaker),
     UserCheck("microphone", "voice", "Did you hear your own voice played back?",
               "Record 3 seconds of speech and play it back.", _microphone),
+    UserCheck("natural-voice", "piper",
+              "Did you hear clear English and Swedish voices, female and male?",
+              "Luna makes one sentence with each natural voice and plays it.", _natural_voice),
 ]
 
 

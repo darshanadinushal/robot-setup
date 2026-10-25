@@ -30,11 +30,40 @@ Robot Setup detects these settings. It does not change them.
 |---------|--------------|----------|
 | Luna | Uses your existing Luna folder, installs system packages and creates Luna's Python environment | Minimal, Standard |
 | Offline voice | Installs the speech libraries and downloads the offline speech model | Standard |
+| Natural voice | Installs Piper and downloads clearer English and Swedish voices, female and male (about 310 MB, see below) | Optional |
 | Automatic startup | Starts Luna full screen when the desktop opens and restarts it if it crashes | Standard |
 | Online AI | Saves your OpenAI API key and chosen model to `~/.luna.env` and checks them | Optional |
 | Automatic login | Opens the desktop without a password after power-on | Optional, off by default |
 
 A profile only sets the default selection. You can still turn individual features on or off.
+
+### Natural voice
+
+Installs `piper-tts` into Luna's environment and downloads four voices to
+`~/.ai-robot-models/piper` (outside the Luna folder, never in Git):
+
+| Language | Voice | Model | Size | Licence |
+|----------|-------|-------|------|---------|
+| English | Female | `en_US-lessac-medium` | 63 MB | Non-commercial training data (prototype only) |
+| English | Male | `en_US-ryan-high` | 121 MB | CC BY-NC-SA 4.0 training data (prototype only) |
+| Svenska | Female | `sv_SE-alma-medium` | 63 MB | CC BY 4.0 (credit required) |
+| Svenska | Male | `sv_SE-nst-medium` | 63 MB | CC0 training data; model licence to confirm |
+
+Downloads come from a fixed version of the `rhasspy/piper-voices` repository and are checked by
+size and SHA-256 before use. A broken download is deleted and repeated by `repair`. `verify`
+makes one sentence with each voice in its own language; `verify --confirm` also plays them so
+you can listen.
+
+**Licensing:** the English voices are for the personal prototype only (non-commercial training
+data). The Swedish voices are more permissive but still need a check. Piper is GPL-3.0. Review
+all licences before selling or giving away a robot.
+
+```bash
+robot-setup install --with piper
+robot-setup verify --confirm
+```
+
+Luna keeps using her basic voice until her speech engine supports Piper.
 
 ## Install
 
@@ -42,7 +71,7 @@ A profile only sets the default selection. You can still turn individual feature
 2. Install it:
 
    ```bash
-   sudo apt install ./robot-setup_0.1.1_all.deb
+   sudo apt install ./robot-setup_0.2.0_all.deb
    ```
 
 3. Open **Robot Setup** from the applications menu, or run `robot-setup`.
@@ -62,7 +91,7 @@ robot-setup plan --profile standard      # show what would change
 robot-setup install --profile standard   # install (asks before changing anything)
 robot-setup install --dry-run            # show the plan only
 robot-setup install --with ai --ai-model <model> --ai-key-stdin < key.txt
-robot-setup verify --confirm             # test screen, touch, speaker and microphone
+robot-setup verify --confirm             # test screen, touch, speaker, microphone and voices
 robot-setup status                       # what Robot Setup installed and checked
 robot-setup repair                       # resume or fix the saved setup
 robot-setup remove                       # undo Robot Setup's changes
@@ -84,7 +113,7 @@ Robot Setup turned it on and nobody changed it since. It keeps:
 
 - your Luna folder and its `.venv`
 - `~/.luna.env` (your API key and settings)
-- the downloaded voice model
+- the downloaded voice models (`~/.ai-robot-models`)
 - system packages, because other programs may use them
 
 To remove Robot Setup itself: `sudo apt remove robot-setup`. Luna keeps working.
@@ -112,7 +141,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design specification.
 
 | Version | Scope |
 |---------|-------|
-| 1.0 | Luna, offline voice, online AI, automatic startup, hardware checks, repair and remove |
+| 1.0 | Luna, offline voice, natural voice, online AI, automatic startup, hardware checks, repair and remove |
 | 1.x | Audio device selection, log viewer, setup report export |
 | 2.0 | Home automation, network setup, camera and sensors |
 | Later | Verified Luna releases, signed packages, ready-made Raspberry Pi OS image |

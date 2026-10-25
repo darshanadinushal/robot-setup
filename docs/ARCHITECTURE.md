@@ -71,6 +71,7 @@ wizard runs only when the user opens it.
 |---------|----------|---------|----------|
 | `luna` | — | ✔ | ✔ |
 | `voice` | luna | | ✔ |
+| `piper` | luna | | optional |
 | `ai` | luna | | optional |
 | `startup` | luna | | ✔ |
 | `autologin` | startup | | opt-in only |
@@ -261,6 +262,8 @@ Verification distinguishes **installed**, **running** and **working**:
 | Luna can start | auto | Luna's venv imports pygame |
 | Speaker / microphone found | auto | a playback / capture device exists (warning if not) |
 | Voice packages and model | auto | pinned packages present, model files present |
+| Natural voice engine and voices | auto | pinned `piper-tts`/`onnxruntime`; each voice file has the expected size and SHA-256 |
+| Speech from each natural voice | auto | Luna's venv loads each voice with Piper and makes one sentence (timings reported) |
 | AI package and settings | auto | openai installed; `.luna.env` is private and has key and model |
 | AI key and model | auto | online check succeeded; pending when offline, skipped when turned off |
 | Startup files | auto | the three managed files are current |
@@ -271,6 +274,7 @@ Verification distinguishes **installed**, **running** and **working**:
 | Touch | user | user closes Luna with the X button |
 | Speaker | user | user hears the `espeak-ng` test sentence |
 | Microphone | user | 3-second `arecord` recording is played back and the user hears it (voice feature only) |
+| Natural voice | user | one sentence per voice (in its own language) is made with Piper and played with `aplay`; the user confirms all are clear |
 
 Check status values: `passed`, `failed`, `warning`, `skipped`, `pending`. User checks are stored
 separately from automatic checks and are never inferred from a package being installed.
@@ -328,9 +332,17 @@ Operating system rollback and Luna version rollback are out of scope for 1.0.
   default candidates are `~/luna` and `~/ai-robot`. The user can choose another folder.
 - Luna's `.venv` is created with `/usr/bin/python3 -m venv --system-site-packages`, so it uses
   apt's `python3-pygame`.
-- Pinned Python packages: `vosk==0.3.45`, `sounddevice==0.5.6` (voice), `openai==3.37.0` (AI).
+- Pinned Python packages: `vosk==0.3.45`, `sounddevice==0.5.6` (voice), `openai==3.37.0` (AI),
+  `piper-tts==1.8.0`, `onnxruntime==1.31.0` (natural voice).
 - The voice model (`vosk-model-small-en-us-0.15` in `~/.ai-robot-models`) is downloaded with
   Luna's `scripts/download-voice-model.py`.
+- Natural voices are downloaded by Robot Setup itself to `~/.ai-robot-models/piper/`
+  (`<model>.onnx` + `<model>.onnx.json`). The catalogue in `config.PIPER_VOICES` pins every file
+  to one `rhasspy/piper-voices` commit with its size and SHA-256. Files are written to `.part`,
+  checked, then renamed. Replacing a voice means changing the catalogue only. Voices: English
+  `en_US-lessac-medium` (female), `en_US-ryan-high` (male); Swedish `sv_SE-alma-medium`
+  (female), `sv_SE-nst-medium` (male). The English voices are provisional (non-commercial
+  training data); a licensing review of all voices is required before distribution. Luna falls back to eSpeak when Piper or a voice is missing.
 - The AI model has no default. The user enters a model name, which is saved as `LUNA_AI_MODEL`.
   Luna's built-in `DEFAULT_MODEL` is not a verified OpenAI model name and should be fixed in the
   Luna repository. If the online check fails, Luna's offline features keep working.
@@ -346,7 +358,7 @@ Operating system rollback and Luna version rollback are out of scope for 1.0.
 7. Running setup again does not duplicate Luna, its service or its settings.
 8. Closing Robot Setup, or removing its package, does not stop Luna.
 9. A crash restarts Luna; quitting Luna leaves it closed; repeated crashes stop after the limit.
-10. `remove` keeps the Luna folder, `.luna.env`, the voice model and system packages.
+10. `remove` keeps the Luna folder, `.luna.env`, the voice models and system packages.
 11. The API key never appears in the state file, logs or process command lines.
 12. The root helper rejects any operation, package or argument not in the allow-list.
 
@@ -373,11 +385,16 @@ Operating system rollback and Luna version rollback are out of scope for 1.0.
   6. Pull the power during install, then `robot-setup repair`.
   7. Run install twice: the second run reports nothing to do.
   8. Disconnect the network and reboot: Luna starts and the offline voice works.
-  9. Auto-login last: enable it, reboot (no password), then `remove` restores the password login.
-  10. `robot-setup remove`, reboot: Luna no longer starts automatically, and the data is kept.
+  9. Natural voice: `robot-setup install --with piper`, then `robot-setup verify --confirm`; all four
+     voices make speech (note the timings) and sound clear in English and Swedish. Run `repair` after deleting one
+     `.onnx` file: only that file is downloaded again.
+  10. Auto-login last: enable it, reboot (no password), then `remove` restores the password login.
+  11. `robot-setup remove`, reboot: Luna no longer starts automatically, and the data is kept.
 
 ### Assumptions to confirm on the Pi
 
 - labwc on Trixie runs entries from `~/.config/autostart`.
 - Trixie still uses LightDM, and `raspi-config nonint do_boot_behaviour B3/B4` still works.
 - The pinned Python packages install on the Pi (aarch64 wheels or source builds).
+- Piper speed on the Pi 5: the male `high` voice is the slowest; if it is too slow, switch the
+  catalogue to `en_US-ryan-medium`.

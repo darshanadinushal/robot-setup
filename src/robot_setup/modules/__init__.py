@@ -5,11 +5,12 @@ tasks(ctx)         -> list of engine.Task (detect via is_done, apply or system_o
 verify(ctx)        -> list of system.Check
 remove(ctx)        -> list of report lines
 """
-from . import ai, autologin, luna, startup, voice
+from . import ai, autologin, luna, piper, startup, voice
 
 MODULES = {
     "luna": luna,
     "voice": voice,
+    "piper": piper,
     "ai": ai,
     "startup": startup,
     "autologin": autologin,

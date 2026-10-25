@@ -230,5 +230,6 @@ def remove_all(ctx):
         ctx.state.data["checks"] = {}
         ctx.state.data["install_boot_id"] = None
         ctx.state.save()
-    lines.append("Kept: Luna folder and .venv, voice model, ~/.luna.env, Luna settings, apt packages.")
+    lines.append("Kept: Luna folder and .venv, voice models, ~/.luna.env, Luna settings, "
+                 "apt packages.")
     return lines

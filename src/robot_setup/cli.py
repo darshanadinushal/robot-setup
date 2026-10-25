@@ -165,7 +165,7 @@ def cmd_status(args):
 def cmd_remove(args):
     ctx = make_context(args)
     print("This removes Luna's automatic startup (and auto-login if Robot Setup turned it on).")
-    print("Luna, its settings, keys, voice model and installed packages are kept.")
+    print("Luna, its settings, keys, voice models and installed packages are kept.")
     if not confirm("Remove?", args.yes):
         print("Nothing was changed.")
         return 1

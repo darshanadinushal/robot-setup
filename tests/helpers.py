@@ -32,6 +32,7 @@ class FakeSystem:
         self.fail = set()  # command names that should fail
         self.elevations = []
         self.download = None
+        self.piper_output = None  # replaces the fake Piper result when set
         self.lightdm = None  # fake /etc/lightdm/lightdm.conf for auto-login tests
         self.default_target = "graphical.target"
         self.service = {"ActiveState": "inactive", "SubState": "dead", "Result": "success",
@@ -60,6 +61,12 @@ class FakeSystem:
             return Result(0, "installed")
         if len(args) > 2 and args[1] == "-c" and "metadata" in args[2]:
             return Result(0, json.dumps({n: self.pip.get(n) for n in args[3:]}))
+        if len(args) > 2 and args[1] == "-c" and "PiperVoice" in args[2]:
+            if self.piper_output is not None:
+                return Result(0, self.piper_output)
+            keys = args[3::4]
+            return Result(0, json.dumps({k: {"load": 0.5, "synth": 0.4, "audio": 1.2}
+                                         for k in keys}))
         if len(args) > 2 and args[1] == "-c":
             return Result(0, "ok")
         if args[-1].endswith("download-voice-model.py"):

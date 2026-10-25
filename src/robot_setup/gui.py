@@ -34,6 +34,7 @@ button { min-height: 48px; min-width: 96px; }
 """
 OPTIONAL = {
     "voice": "Offline voice commands (microphone)",
+    "piper": "Clearer English and Swedish voices, female and male (about 310 MB)",
     "ai": "Online AI conversation (needs an OpenAI API key)",
     "startup": "Start Luna automatically and restart her after a crash",
     "autologin": "Sign in automatically at power-on (anyone with the robot can use it)",
@@ -462,7 +463,7 @@ class Wizard(Gtk.ApplicationWindow):
     def build_remove(self):
         self.remove_label = label(
             "This removes Luna's automatic startup, and turns auto-login off if Robot Setup "
-            "turned it on. Luna, her settings, your API key, the voice model and installed "
+            "turned it on. Luna, her settings, your API key, the voice models and installed "
             "packages are kept.")
         self.remove_button = self.button("Remove", self.do_remove, True)
         return self.page("Remove setup", self.remove_label,
