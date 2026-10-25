@@ -22,7 +22,26 @@ JOURNAL_HINT = "See: journalctl --user -u luna.service"
 
 
 def _systemd_quote(value):
+    """Quote one argument of a command line setting (ExecStart=)."""
     return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%") + '"'
+
+
+def _systemd_path(value):
+    """A path setting (WorkingDirectory=): systemd does not remove quotes here, so the path is
+    written as is. Spaces are fine; only the % specifier character must be escaped."""
+    return str(value).replace("%", "%%")
+
+
+def unsupported_path(path):
+    """Why systemd cannot use this path in a unit file, or None."""
+    text = str(path)
+    if any(ord(c) < 32 or c == "\x7f" for c in text):
+        return "it contains control characters"
+    if text != text.strip():
+        return "it starts or ends with a space"
+    if text.endswith("\\"):
+        return "it ends with a backslash"
+    return None
 
 
 def render_unit(ctx):
@@ -38,7 +57,7 @@ def render_unit(ctx):
         "\n"
         "[Service]\n"
         "Type=simple\n"
-        f"WorkingDirectory={_systemd_quote(ctx.luna_dir)}\n"
+        f"WorkingDirectory={_systemd_path(ctx.luna_dir)}\n"
         f"ExecStart={_systemd_quote(python)} {_systemd_quote(ctx.luna_dir / 'main.py')} --fullscreen\n"
         "Restart=on-failure\n"
         "RestartSec=5\n"
@@ -125,6 +144,10 @@ def conflicts(ctx):
 
 
 def preconditions(ctx):
+    problem = unsupported_path(ctx.luna_dir)
+    if problem:
+        return [f"Automatic startup cannot use the Luna folder {ctx.luna_dir!r}: {problem}. "
+                "Rename the folder."]
     return [f"Luna is already started by {path}. Remove that entry, then try again."
             for path in conflicts(ctx)]
 

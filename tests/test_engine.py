@@ -190,6 +190,18 @@ class StartupTests(unittest.TestCase):
 
     def test_paths_are_quoted_and_percent_escaped(self):
         self.assertEqual(startup._systemd_quote('/a b/%c"d'), '"/a b/%%c\\"d"')
+        self.assertEqual(startup._systemd_path("/a b/%c"), "/a b/%%c")
+
+    def test_working_directory_is_not_quoted(self):
+        # Regression (0.1.0): systemd ignored a quoted WorkingDirectory= as "not absolute".
+        line = next(l for l in startup.render_unit(self.box.context()).splitlines()
+                    if l.startswith("WorkingDirectory="))
+        self.assertEqual(line, f"WorkingDirectory={self.box.luna}")
+
+    def test_unusable_folder_names_block_startup(self):
+        self.assertIsNone(startup.unsupported_path("/home/robot/my luna"))
+        self.assertIsNotNone(startup.unsupported_path("/home/robot/luna\n"))
+        self.assertIsNotNone(startup.unsupported_path("/home/robot/luna "))
 
     def test_other_luna_autostart_blocks_setup(self):
         autostart = self.box.home / ".config" / "labwc" / "autostart"

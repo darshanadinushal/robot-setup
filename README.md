@@ -42,7 +42,7 @@ A profile only sets the default selection. You can still turn individual feature
 2. Install it:
 
    ```bash
-   sudo apt install ./robot-setup_0.1.0_all.deb
+   sudo apt install ./robot-setup_0.1.1_all.deb
    ```
 
 3. Open **Robot Setup** from the applications menu, or run `robot-setup`.

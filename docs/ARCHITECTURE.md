@@ -159,7 +159,7 @@ overrides it for tests.
 ```json
 {
   "schema": 1,
-  "installer_version": "0.1.0",
+  "installer_version": "0.1.1",
   "updated": "2026-01-01T12:00:00+00:00",
   "request": {"profile": "standard", "features": ["luna", "voice", "startup"],
               "luna_dir": "/home/robot/luna", "ai_model": null, "validate_ai": true},
@@ -243,7 +243,11 @@ Key decisions:
 - **Logs.** `journalctl --user -u luna.service`.
 - **Login marker.** Only the autostart entry passes `--login`, so the recorded boot id proves the
   desktop login started Luna. Starting Luna by hand (or the wizard's screen test) does not write it.
-- **Quoting.** Paths in the unit are quoted and `%` is escaped, so folders with spaces work.
+- **Quoting.** Command lines (`ExecStart=`) quote each argument. Path settings
+  (`WorkingDirectory=`) are written unquoted, because systemd does not remove quotes there and
+  ignores the setting as "not absolute". In both, `%` is escaped as `%%`, so folders with spaces
+  work. Folder paths that systemd cannot represent (control characters, leading or trailing spaces)
+  block the startup feature.
 
 Automatic login is a separate, opt-in feature because it removes the password prompt on the
 device.
@@ -353,7 +357,10 @@ Operating system rollback and Luna version rollback are out of scope for 1.0.
   file ownership and backups, `.luna.env` updates, root helper validation, startup files and
   conflict detection, install order, failure and resume, removal, and the CLI.
 - **CI** (GitHub Actions): unit tests on Python 3.11 and 3.13, a compile check, and the `.deb` build
-  with a listing of its contents.
+  with a listing of its contents. CI sets `ROBOT_SETUP_REQUIRE_SYSTEMD=1`, so the generated
+  `luna.service` (for a folder with a space and `%` in its name) must pass
+  `systemd-analyze verify` without any message about the unit; systemd only warns about many bad
+  settings, so a warning counts as a failure.
 - **Manual test on the Pi** (each release). Add one feature at a time so failures are isolated:
   1. Clean Raspberry Pi OS Trixie: build and install the `.deb`; `robot-setup check`,
      `robot-setup plan --profile minimal`, `robot-setup install --profile minimal --dry-run`.
