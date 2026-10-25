@@ -1,5 +1,6 @@
 import os
 import unittest
+from pathlib import Path
 
 from helpers import TEST_KEY, Sandbox, pi_device
 
@@ -101,25 +102,65 @@ class EngineTests(unittest.TestCase):
         checks = {c.id: c.status for c in engine.run_verify(self.box.context(features=("luna", "startup")))}
         self.assertEqual(checks["startup-files"], "passed")
         self.assertEqual(checks["startup-reboot"], "pending")
-        after = self.box.context(features=("luna", "startup"), device=pi_device(boot_id="boot-2"))
-        checks = {c.id: c.status for c in engine.run_verify(after)}
-        self.assertEqual(checks["startup-reboot"], "failed")  # fake service is inactive
 
-    def test_remove_keeps_user_data_and_changed_files(self):
+    def reboot_check(self, service=None, login_started=True):
+        engine.install(self.box.context(features=("luna", "startup")))
+        if login_started:
+            self.box.paths.autostart_marker.write_text("boot-2\n")
+        self.box.system.service.update(service or {})
+        ctx = self.box.context(features=("luna", "startup"), device=pi_device(boot_id="boot-2"))
+        return startup.reboot_check(ctx)
+
+    def test_reboot_check_distinguishes_how_luna_started_and_stopped(self):
+        started = {"ExecMainStartTimestamp": "Sun 2026-10-25 10:00:00 CET"}
+        cases = [
+            ("not started at login", {}, False, "failed", "did not start Luna"),
+            ("started by hand", {"ActiveState": "active"}, False, "warning", "by hand"),
+            ("running", {"ActiveState": "active", **started}, True, "passed", "running"),
+            ("crashed, recovered", {"ActiveState": "active", "NRestarts": "2"}, True,
+             "warning", "restarted 2"),
+            ("restarting", {"ActiveState": "activating", "SubState": "auto-restart"}, True,
+             "warning", "restarting"),
+            ("gave up", {"ActiveState": "failed", "Result": "exit-code", "NRestarts": "5"},
+             True, "failed", "stopped after 5"),
+            ("closed by user", {"Result": "success", **started}, True, "passed", "closed"),
+            ("never ran", {}, True, "failed", "did not start"),
+        ]
+        for name, service, login, status, detail in cases:
+            with self.subTest(name):
+                self.tearDown()
+                self.setUp()
+                check = self.reboot_check(service, login)
+                self.assertEqual(check.status, status, check.detail)
+                self.assertIn(detail, check.detail)
+
+    def test_remove_turns_startup_off_and_keeps_user_data(self):
         features = ("luna", "voice", "startup")
         engine.install(self.box.context(features=features))
-        launcher = self.box.paths.launcher
-        launcher.write_text(launcher.read_text() + "# my change\n")
+        entry = self.box.paths.autostart_entry
+        entry.write_text(entry.read_text() + "# my change\n")
         lines = engine.remove_all(self.box.context(features=features))
         self.assertFalse(self.box.paths.systemd_unit.exists())
-        self.assertFalse(self.box.paths.autostart_entry.exists())
-        self.assertTrue(launcher.exists())
-        self.assertTrue(any("kept (you changed it)" in line for line in lines))
+        self.assertFalse(entry.exists(), "a changed autostart entry would still start Luna")
+        self.assertFalse(self.box.paths.launcher.exists())
+        self.assertTrue(any("changed copy is saved" in line for line in lines))
+        saved = State(self.box.paths.state_file).load().data["backups"][-1]["backup"]
+        self.assertIn("# my change", Path(saved).read_text())
+        self.assertIn("Automatic startup is off.", lines)
         self.assertTrue((self.box.luna / ".venv").exists())
         self.assertTrue(self.box.paths.voice_model.exists())
         state = State(self.box.paths.state_file).load()
         self.assertIsNone(state.data["request"])
         self.assertTrue(all(i["status"] == PENDING for i in state.tasks.values()))
+
+    def test_remove_reports_other_launchers_that_still_start_luna(self):
+        engine.install(self.box.context(features=("luna", "startup")))
+        autostart = self.box.home / ".config" / "labwc" / "autostart"
+        autostart.parent.mkdir(parents=True)
+        autostart.write_text("bash ~/luna/scripts/run-pi.sh &\n")
+        lines = engine.remove_all(self.box.context(features=("luna", "startup")))
+        self.assertIn("Automatic startup is NOT fully off. Luna can still start from:", lines)
+        self.assertTrue(any(str(autostart) in line for line in lines))
 
     def test_open_context_without_saved_request(self):
         with self.assertRaises(SetupError):
@@ -144,6 +185,8 @@ class StartupTests(unittest.TestCase):
         launcher = startup.render_launcher(self.box.context())
         self.assertIn("import-environment WAYLAND_DISPLAY DISPLAY", launcher)
         self.assertIn("systemctl --user start luna.service", launcher)
+        self.assertIn('if [ "$1" = "--login" ]', launcher)  # only login records the boot
+        self.assertIn('" --login\n', startup.render_autostart(self.box.context()))
 
     def test_paths_are_quoted_and_percent_escaped(self):
         self.assertEqual(startup._systemd_quote('/a b/%c"d'), '"/a b/%%c\\"d"')

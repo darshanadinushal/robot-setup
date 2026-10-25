@@ -32,6 +32,10 @@ class FakeSystem:
         self.fail = set()  # command names that should fail
         self.elevations = []
         self.download = None
+        self.lightdm = None  # fake /etc/lightdm/lightdm.conf for auto-login tests
+        self.default_target = "graphical.target"
+        self.service = {"ActiveState": "inactive", "SubState": "dead", "Result": "success",
+                        "NRestarts": "0", "ExecMainStartTimestamp": ""}
 
     def run(self, args, **kwargs):
         args = [str(a) for a in args]
@@ -63,6 +67,10 @@ class FakeSystem:
                 self.download()
             return Result(0, "Installed")
         if name == "systemctl":
+            if "get-default" in args:
+                return Result(0, self.default_target + "\n")
+            if "ActiveState" in args:
+                return Result(0, "\n".join(f"{k}={v}" for k, v in self.service.items()))
             return Result(0, "inactive" if "is-active" in args else "")
         return Result(0, "")
 
@@ -71,6 +79,11 @@ class FakeSystem:
         for op in operations:
             if op["op"] == "apt_install":
                 self.packages.update(op["packages"])
+            elif op["op"] == "autologin" and self.lightdm:
+                user = "robot" if op["enable"] else ""
+                self.lightdm.write_text(f"[Seat:*]\nautologin-user={user}\n")
+                self.default_target = "multi-user.target" if op.get("console") \
+                    else "graphical.target"
         return {"ok": True}
 
 

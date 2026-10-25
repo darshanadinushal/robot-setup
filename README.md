@@ -76,8 +76,11 @@ for system changes: through a password window in the desktop, or through `sudo` 
 
 ## What `remove` keeps
 
-`robot-setup remove` deletes only the files Robot Setup created that nobody has changed since. It
-also switches automatic login off again, but only if Robot Setup turned it on. It keeps:
+`robot-setup remove` deletes only the files Robot Setup created that nobody has changed since.
+Startup files are the exception: they are always removed so Luna stops starting automatically,
+and a copy you changed is saved in `~/.local/state/robot-setup/backups`. If another entry can
+still start Luna, `remove` lists it. Automatic login is put back the way it was, but only if
+Robot Setup turned it on and nobody changed it since. It keeps:
 
 - your Luna folder and its `.venv`
 - `~/.luna.env` (your API key and settings)

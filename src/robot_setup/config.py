@@ -143,6 +143,11 @@ class Paths:
         return self.home / ".config" / "autostart" / "luna-robot-setup.desktop"
 
     @property
+    def autostart_marker(self):
+        """Boot id written by the launcher when the desktop login started it."""
+        return self.state_dir / "autostart-boot-id"
+
+    @property
     def env_file(self):
         return self.home / ".luna.env"
 

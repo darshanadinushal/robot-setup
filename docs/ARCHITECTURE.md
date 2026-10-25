@@ -170,7 +170,7 @@ overrides it for tests.
   "backups": [{"path": "...", "backup": "...", "at": "..."}],
   "checks": {"screen": {"kind": "user", "status": "passed", "updated": "..."}},
   "install_boot_id": "…",
-  "autologin": {"previous": "none", "changed_by_setup": true}
+  "autologin": {"previous": null, "previous_target": "graphical.target", "changed_by_setup": true}
 }
 ```
 
@@ -207,7 +207,7 @@ Allowed operations in 1.0:
 | Operation | Arguments | Runs |
 |-----------|-----------|------|
 | `apt_install` | `packages`: subset of `python3`, `python3-pygame`, `python3-venv`, `espeak-ng`, `alsa-utils`, `libportaudio2` | `apt-get update`, `apt-get install -y …` |
-| `autologin` | `enable`: boolean | `raspi-config nonint do_boot_behaviour B4` (on) or `B3` (off) for the calling user |
+| `autologin` | `enable`: boolean; `console`: boolean, only with `enable: false` | `raspi-config nonint do_boot_behaviour` `B4` (desktop auto-login), `B3` (desktop, password) or `B1` (console, password) for the calling user |
 
 Adding an operation requires a change to this table, the allow-list and its tests.
 
@@ -218,8 +218,9 @@ desktop autostart entry with a systemd user service:
 
 ```
 power on → (optional auto-login) → labwc desktop session
-  → ~/.config/autostart/luna-robot-setup.desktop
+  → ~/.config/autostart/luna-robot-setup.desktop      Exec="…/start-luna" --login
   → ~/.local/share/robot-setup/start-luna
+       (--login only) write the boot id to ~/.local/state/robot-setup/autostart-boot-id
        systemctl --user import-environment WAYLAND_DISPLAY DISPLAY XAUTHORITY XDG_SESSION_TYPE XDG_CURRENT_DESKTOP
        systemctl --user reset-failed luna.service
        systemctl --user start luna.service
@@ -240,6 +241,8 @@ Key decisions:
   when the user closes Luna on purpose. A crash restarts it, at most five times in five minutes.
 - **Lifetime.** `PartOf=graphical-session.target` stops Luna when the session ends.
 - **Logs.** `journalctl --user -u luna.service`.
+- **Login marker.** Only the autostart entry passes `--login`, so the recorded boot id proves the
+  desktop login started Luna. Starting Luna by hand (or the wizard's screen test) does not write it.
 - **Quoting.** Paths in the unit are quoted and `%` is escaped, so folders with spaces work.
 
 Automatic login is a separate, opt-in feature because it removes the password prompt on the
@@ -258,7 +261,7 @@ Verification distinguishes **installed**, **running** and **working**:
 | AI key and model | auto | online check succeeded; pending when offline, skipped when turned off |
 | Startup files | auto | the three managed files are current |
 | Desktop passed to Luna service | auto | the user manager has `WAYLAND_DISPLAY` or `DISPLAY` (desktop only) |
-| Luna starts after restart | auto | boot id differs from the install boot **and** `luna.service` is active; pending before a reboot |
+| Luna starts after restart | auto | see the table below; pending until the Pi has restarted since install |
 | Desktop auto-login | auto | LightDM logs in the Luna user (only when selected) |
 | Screen | user | Luna opens and the user confirms the face is visible |
 | Touch | user | user closes Luna with the X button |
@@ -268,6 +271,19 @@ Verification distinguishes **installed**, **running** and **working**:
 Check status values: `passed`, `failed`, `warning`, `skipped`, `pending`. User checks are stored
 separately from automatic checks and are never inferred from a package being installed.
 
+The restart check combines the login marker (section 8) with `systemctl --user show luna.service`
+(`ActiveState`, `SubState`, `Result`, `NRestarts`, `ExecMainStartTimestamp`):
+
+| Started by login this boot | Service | Result |
+|----------------------------|---------|--------|
+| no | active | warning: running, but started by hand |
+| no | not active | failed: login did not start Luna (is someone signed in?) |
+| yes | active, no restarts | passed |
+| yes | active after restarts, or restarting | warning: crashed and was restarted |
+| yes | failed | failed: crashed until the restart limit |
+| yes | inactive, exited successfully | passed: closed by the user |
+| yes | never ran | failed: login entry ran but Luna did not start |
+
 ## 10. Recovery and rollback
 
 Version 1.0 has **limited rollback**:
@@ -276,11 +292,18 @@ Version 1.0 has **limited rollback**:
 - **Backups:** before Robot Setup replaces a file that it did not write (or that the user changed),
   the file is copied to `~/.local/state/robot-setup/backups/<time>/…` and recorded.
 - **Ownership:** each managed file is recorded with its sha256. `remove` deletes a file only when it
-  still matches, otherwise it keeps the file and says so.
+  still matches, otherwise it keeps the file and says so. Exception: startup files (autostart entry,
+  launcher, unit) are always removed, because a kept entry would still start Luna; a changed copy is
+  saved to the backups folder first. After removal, Robot Setup searches the autostart locations
+  again and reports any remaining entry that can still start Luna instead of claiming success.
 - **Existing environments:** an existing `.venv` that Robot Setup did not create is never deleted.
   The user is asked to rename it.
 - **Shared packages:** apt packages are never removed, because other software may use them.
-- **Login setting:** `remove` switches automatic login off only if Robot Setup switched it on.
+- **Login setting:** before enabling auto-login, Robot Setup records the previous login user and
+  boot target (`systemctl get-default`). Auto-login for a different user blocks the feature, since
+  it cannot be restored safely. `remove` restores the previous mode (desktop with password, B3, or
+  console with password, B1) only if the current setting is still what Robot Setup applied (our
+  user, graphical target). If someone changed it since, it is left as it is and reported.
 
 Operating system rollback and Luna version rollback are out of scope for 1.0.
 
@@ -331,15 +354,20 @@ Operating system rollback and Luna version rollback are out of scope for 1.0.
   conflict detection, install order, failure and resume, removal, and the CLI.
 - **CI** (GitHub Actions): unit tests on Python 3.11 and 3.13, a compile check, and the `.deb` build
   with a listing of its contents.
-- **Manual test on the Pi** (each release):
-  1. Clean Raspberry Pi OS Trixie: install the `.deb`, run the Standard profile, reboot.
-  2. Crash test: `kill -SEGV $(systemctl --user show -p MainPID --value luna.service)` restarts
-     Luna; six quick crashes leave it stopped.
-  3. Quit Luna with the X button: it stays closed.
-  4. Pull the power during install, then `robot-setup repair`.
-  5. Run install twice: the second run reports nothing to do.
-  6. Disconnect the network and reboot: Luna starts and the offline voice works.
-  7. `robot-setup remove`, reboot: Luna no longer starts automatically, and the data is kept.
+- **Manual test on the Pi** (each release). Add one feature at a time so failures are isolated:
+  1. Clean Raspberry Pi OS Trixie: build and install the `.deb`; `robot-setup check`,
+     `robot-setup plan --profile minimal`, `robot-setup install --profile minimal --dry-run`.
+  2. Minimal install from the desktop wizard; screen and touch checks.
+  3. Add offline voice and startup (`robot-setup install --with voice --with startup`); reboot,
+     sign in, `robot-setup verify` reports "Started at login and running".
+  4. Crash test: `kill -SEGV $(systemctl --user show -p MainPID --value luna.service)` restarts
+     Luna and verify warns about the restart; six quick crashes leave it stopped (verify fails).
+  5. Quit Luna with the X button: it stays closed and verify reports "closed by the user".
+  6. Pull the power during install, then `robot-setup repair`.
+  7. Run install twice: the second run reports nothing to do.
+  8. Disconnect the network and reboot: Luna starts and the offline voice works.
+  9. Auto-login last: enable it, reboot (no password), then `remove` restores the password login.
+  10. `robot-setup remove`, reboot: Luna no longer starts automatically, and the data is kept.
 
 ### Assumptions to confirm on the Pi
 

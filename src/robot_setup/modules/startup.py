@@ -7,12 +7,13 @@ Quitting Luna exits with code 0, so it stays closed; a crash is restarted.
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
 from ..config import SERVICE_NAME
 from ..files import is_current, remove_managed, write_managed
-from ..system import FAILED, PASSED, PENDING, SKIPPED, Check, read_text
+from ..system import FAILED, PASSED, PENDING, SKIPPED, WARNING, Check, read_text
 
 FEATURE = "startup"
 SESSION_VARIABLES = ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "XDG_SESSION_TYPE",
@@ -47,9 +48,16 @@ def render_unit(ctx):
 
 def render_launcher(ctx):
     variables = " ".join(SESSION_VARIABLES)
+    state_dir = shlex.quote(str(ctx.paths.state_dir))
+    marker = shlex.quote(str(ctx.paths.autostart_marker))
     return (
         "#!/bin/sh\n"
         "# Managed by Robot Setup: pass the desktop session to the Luna service and start it.\n"
+        "# --login is used only by the desktop autostart entry; it records the boot so\n"
+        "# 'robot-setup verify' can tell a login start from a manual start.\n"
+        'if [ "$1" = "--login" ]; then\n'
+        f"    mkdir -p {state_dir} && cat /proc/sys/kernel/random/boot_id > {marker} 2>/dev/null\n"
+        "fi\n"
         f"systemctl --user import-environment {variables} 2>/dev/null\n"
         f"systemctl --user reset-failed {SERVICE_NAME} 2>/dev/null\n"
         f"exec systemctl --user start {SERVICE_NAME}\n"
@@ -63,7 +71,7 @@ def render_autostart(ctx):
         "Type=Application\n"
         "Name=Luna\n"
         "Comment=Start Luna (managed by Robot Setup)\n"
-        f'Exec="{launcher}"\n'
+        f'Exec="{launcher}" --login\n'
         "NoDisplay=true\n"
         "X-GNOME-Autostart-enabled=true\n"
     )
@@ -145,10 +153,6 @@ def _systemctl(ctx, *args):
     return ctx.runner.run(["systemctl", "--user", *args], timeout=30)
 
 
-def is_active(ctx):
-    return _systemctl(ctx, "is-active", SERVICE_NAME).stdout.strip() == "active"
-
-
 def service_main_pid(ctx):
     value = _systemctl(ctx, "show", "-p", "MainPID", "--value", SERVICE_NAME).stdout.strip()
     return int(value) if value.isdigit() else 0
@@ -196,10 +200,52 @@ def start_luna(ctx):
     return "Luna is starting."
 
 
+def service_status(ctx):
+    """ActiveState, SubState, Result, NRestarts and ExecMainStartTimestamp of luna.service."""
+    output = _systemctl(ctx, "show", "-p", "ActiveState", "-p", "SubState", "-p", "Result",
+                        "-p", "NRestarts", "-p", "ExecMainStartTimestamp", SERVICE_NAME).stdout
+    return dict(line.split("=", 1) for line in output.splitlines() if "=" in line)
+
+
+def reboot_check(ctx):
+    """Did the desktop login start Luna in this boot, and what happened to it since?"""
+    def check(status, detail):
+        return Check("startup-reboot", "Luna starts after restart", status, detail)
+
+    install_boot = ctx.state.data.get("install_boot_id")
+    if install_boot and install_boot == ctx.device.boot_id:
+        return check(PENDING, "Restart the Pi, then check again.")
+    service = service_status(ctx)
+    state, sub = service.get("ActiveState", ""), service.get("SubState", "")
+    restarts = service.get("NRestarts", "0")
+    login_started = bool(ctx.device.boot_id) and \
+        (read_text(ctx.paths.autostart_marker) or "").strip() == ctx.device.boot_id
+    if not login_started:
+        if state == "active":
+            return check(WARNING, "Luna is running, but it was not started by the desktop "
+                                  "login (started by hand?). Restart the Pi to test again.")
+        return check(FAILED, "The desktop login did not start Luna in this boot. Is someone "
+                             "signed in to the desktop? Without auto-login, sign in first.")
+    if state == "active":
+        detail = "Started at login and running."
+        if restarts not in ("", "0"):
+            detail += f" It crashed and was restarted {restarts} time(s). {JOURNAL_HINT}"
+            return check(WARNING, detail)
+        return check(PASSED, detail)
+    if state in ("activating", "reloading") and sub == "auto-restart":
+        return check(WARNING, f"Started at login, crashed and is restarting. {JOURNAL_HINT}")
+    if state == "failed":
+        return check(FAILED, f"Started at login, then crashed ({service.get('Result') or 'error'})"
+                             f" and stopped after {restarts} restart(s). {JOURNAL_HINT}")
+    if state == "inactive" and service.get("Result") == "success" and \
+            service.get("ExecMainStartTimestamp"):
+        return check(PASSED, "Started at login; closed by the user since.")
+    return check(FAILED, f"The login entry ran, but Luna did not start. {JOURNAL_HINT}")
+
+
 def verify(ctx):
     checks = [Check("startup-files", "Startup files", PASSED if files_current(ctx) else FAILED,
                     "" if files_current(ctx) else "Run Repair.")]
-    active = is_active(ctx)
     if ctx.device.graphical:
         environment = _systemctl(ctx, "show-environment").stdout
         handed_over = "WAYLAND_DISPLAY=" in environment or "DISPLAY=" in environment
@@ -209,21 +255,24 @@ def verify(ctx):
     else:
         checks.append(Check("startup-session", "Desktop passed to Luna service", SKIPPED,
                             "Run on the Pi desktop to check."))
-    install_boot = ctx.state.data.get("install_boot_id")
-    if install_boot and install_boot == ctx.device.boot_id:
-        checks.append(Check("startup-reboot", "Luna starts after restart", PENDING,
-                            "Restart the Pi, then check again."))
-    elif active:
-        checks.append(Check("startup-reboot", "Luna starts after restart", PASSED, "running"))
-    else:
-        checks.append(Check("startup-reboot", "Luna starts after restart", FAILED,
-                            "Luna is not running (closed or crashed). " + JOURNAL_HINT))
+    checks.append(reboot_check(ctx))
     return checks
 
 
 def remove(ctx):
+    """Turn automatic startup off. Changed copies of our files are backed up, not kept in
+    place, because a kept autostart entry would still start Luna."""
     _systemctl(ctx, "stop", SERVICE_NAME)
-    lines = [f"{path}: {remove_managed(ctx, path)}" for path, _, _ in managed_files(ctx)]
+    lines = [f"{path}: {remove_managed(ctx, path, keep_changed=False)}"
+             for path, _, _ in managed_files(ctx)]
     _systemctl(ctx, "daemon-reload")
     ctx.state.save()
+    remaining = [p for p in (ctx.paths.autostart_entry, ctx.paths.systemd_unit) if p.exists()]
+    remaining += conflicts(ctx)
+    if remaining:
+        lines.append("Automatic startup is NOT fully off. Luna can still start from:")
+        lines.extend(f"  {path}" for path in dict.fromkeys(remaining))
+        lines.append("Remove or edit these entries by hand.")
+    else:
+        lines.append("Automatic startup is off.")
     return lines

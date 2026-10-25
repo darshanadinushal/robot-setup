@@ -1,7 +1,9 @@
 import os
+import tempfile
 import types
-from pathlib import Path
 import unittest
+from pathlib import Path
+from unittest import mock
 
 import helpers  # noqa: F401  (adds src to sys.path)
 
@@ -33,6 +35,9 @@ class PrivilegedHelperTests(unittest.TestCase):
             {"op": "apt_install", "packages": ["python3"], "options": ["--allow-unauthenticated"]},
             {"op": "autologin", "enable": "yes"},
             {"op": "autologin", "enable": True, "user": "root"},
+            {"op": "autologin", "enable": True, "console": True},
+            {"op": "autologin", "enable": False, "console": "yes"},
+            {"op": "autologin"},
         ]
         for op in bad:
             with self.subTest(op=op), self.assertRaises(privileged.RequestError):
@@ -55,6 +60,21 @@ class PrivilegedHelperTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(commands[0][0], ["apt-get", "update"])
         self.assertEqual(commands[1][0], ["apt-get", "install", "-y", "espeak-ng"])
+
+    def test_autologin_maps_to_raspi_config_boot_behaviour(self):
+        commands = []
+        user = types.SimpleNamespace(pw_name="robot")
+        with tempfile.NamedTemporaryFile(delete=False) as tool:
+            pass
+        self.addCleanup(os.unlink, tool.name)
+        with mock.patch.object(privileged, "RASPI_CONFIG", tool.name):
+            for op in ({"op": "autologin", "enable": True, "console": False},
+                       {"op": "autologin", "enable": False, "console": False},
+                       {"op": "autologin", "enable": False, "console": True}):
+                privileged.execute([op], user,
+                                   run=lambda args, env=None: commands.append((args, env)) or 0)
+        self.assertEqual([c[0][-1] for c in commands], ["B4", "B3", "B1"])
+        self.assertEqual(commands[0][1], {"SUDO_USER": "robot"})
 
     def test_execute_stops_after_failure(self):
         result = privileged.execute(

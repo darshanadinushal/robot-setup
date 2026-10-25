@@ -63,8 +63,9 @@ def write_managed(ctx, path, content, task_id, mode=0o644):
     return "written"
 
 
-def remove_managed(ctx, path):
-    """Delete a file only if Robot Setup created it and nobody changed it since."""
+def remove_managed(ctx, path, keep_changed=True):
+    """Delete a file Robot Setup created. A file the user changed is kept, or, when
+    keep_changed is False, saved to the backups folder and then deleted."""
     record = ctx.state.owned(path)
     if record is None:
         return "not managed"
@@ -72,8 +73,13 @@ def remove_managed(ctx, path):
         ctx.state.disown(path)
         return "already gone"
     if sha256_bytes(path.read_bytes()) != record["sha256"]:
+        if keep_changed:
+            ctx.state.disown(path)
+            return "kept (you changed it)"
+        saved = backup(ctx, path)
+        path.unlink()
         ctx.state.disown(path)
-        return "kept (you changed it)"
+        return f"removed (your changed copy is saved in {saved})"
     path.unlink()
     ctx.state.disown(path)
     return "removed"

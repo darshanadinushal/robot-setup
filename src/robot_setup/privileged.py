@@ -42,9 +42,12 @@ def validate_operation(op):
                 raise RequestError("package not allowed")
         return {"op": kind, "packages": sorted(set(packages))}
     if kind == "autologin":
-        if set(op) != {"op", "enable"} or not isinstance(op["enable"], bool):
-            raise RequestError("autologin takes only 'enable' (true/false)")
-        return {"op": kind, "enable": op["enable"]}
+        if set(op) - {"op", "enable", "console"} or not isinstance(op.get("enable"), bool):
+            raise RequestError("autologin takes 'enable' (true/false) and optional 'console'")
+        console = op.get("console", False)
+        if not isinstance(console, bool) or (console and op["enable"]):
+            raise RequestError("'console' is a boolean and only allowed when disabling")
+        return {"op": kind, "enable": op["enable"], "console": console}
     raise RequestError("operation not allowed")
 
 
@@ -96,7 +99,8 @@ def execute(operations, user, run=_run):
             if not Path(RASPI_CONFIG).exists():
                 code = 127
             else:
-                behaviour = "B4" if op["enable"] else "B3"
+                # B4: desktop + auto-login, B3: desktop with password, B1: console with password
+                behaviour = "B4" if op["enable"] else ("B1" if op.get("console") else "B3")
                 code = run([RASPI_CONFIG, "nonint", "do_boot_behaviour", behaviour],
                            {"SUDO_USER": user.pw_name})
         results.append({"op": op["op"], "ok": code == 0, "code": code})

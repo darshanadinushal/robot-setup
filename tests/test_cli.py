@@ -53,6 +53,14 @@ class CliTests(unittest.TestCase):
         code, out = self.run_cli("repair", "--yes")
         self.assertEqual(code, 0, out)
 
+    def test_with_adds_features_to_the_saved_setup(self):
+        self.run_cli("install", "--yes", "--profile", "minimal", "--luna-dir", str(self.box.luna))
+        code, out = self.run_cli("install", "--yes", "--with", "voice", "--with", "startup")
+        self.assertEqual(code, 0, out)
+        saved = cli.State(self.box.paths.state_file).load().data["request"]
+        self.assertEqual(saved["features"], ["luna", "voice", "startup"])
+        self.assertEqual(saved["luna_dir"], str(self.box.luna))
+
     def test_ai_key_from_stdin_is_not_saved_in_state(self):
         code, out = self.run_cli("install", "--yes", "--profile", "minimal", "--with", "ai",
                                  "--ai-model", "test-model", "--ai-key-stdin", "--skip-ai-check",
