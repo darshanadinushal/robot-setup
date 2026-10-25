@@ -1,4 +1,5 @@
 """Test helpers: a fake device, a fake command runner and a context in a temporary home."""
+import hashlib
 import json
 import sys
 import tempfile
@@ -11,6 +12,42 @@ from robot_setup.config import Paths, Request  # noqa: E402
 from robot_setup.system import DeviceInfo, Result  # noqa: E402
 
 TEST_KEY = "sk-test-" + "x" * 40
+FAKE_BASE = "https://voices.example/pinned/"
+# The fake Luna's listening languages: language -> listening model folder.
+LISTENING = {"en": "vosk-model-small-en-us-0.15", "sv": "vosk-model-small-sv-test"}
+LANGUAGE_PACKS = {
+    "en": {"code": "en", "name": "English", "native_name": "English",
+           "listening_model": LISTENING["en"], "listening_model_mb": 40, "sample": "Hello sample."},
+    "sv": {"code": "sv", "name": "Swedish", "native_name": "Svenska",
+           "listening_model": LISTENING["sv"], "listening_model_mb": 289, "sample": "Hej sample."},
+}
+# File contents served by the fake download server.
+VOICE_CONTENT = {"test-female.onnx": b"F" * 3000, "test-female.onnx.json": b"{}",
+                 "test-male.onnx": b"M" * 5000, "test-male.onnx.json": b"{}"}
+
+
+def fake_voice(key, language, gender, name, model):
+    files = [{"name": model + suffix, "source": f"{language}/{model}{suffix}",
+              "size": len(VOICE_CONTENT[model + suffix]),
+              "sha256": hashlib.sha256(VOICE_CONTENT[model + suffix]).hexdigest()}
+             for suffix in (".onnx", ".onnx.json")]
+    return {"key": key, "language": language, "gender": gender, "name": name, "model": model,
+            "espeak": language, "license_details": "test licence", "files": files}
+
+
+TEST_VOICES = [fake_voice("EN_FEMALE", "en", "female", "Fem", "test-female"),
+               fake_voice("SV_MALE", "sv", "male", "Man", "test-male")]
+
+
+def write_luna_catalogue(luna, voices=None, packs=None, base=FAKE_BASE):
+    """Write Luna's voices.json and language packs into a fake Luna folder."""
+    folder = Path(luna) / "robot_hud" / "languages"
+    folder.mkdir(parents=True, exist_ok=True)
+    for code, pack in (LANGUAGE_PACKS if packs is None else packs).items():
+        (folder / f"{code}.json").write_text(json.dumps(pack), encoding="utf-8")
+    catalogue = {"default": "EN_FEMALE", "download_base": base,
+                 "voices": TEST_VOICES if voices is None else voices}
+    (Path(luna) / "robot_hud" / "voices.json").write_text(json.dumps(catalogue), encoding="utf-8")
 
 
 def pi_device(**changes):
@@ -71,7 +108,7 @@ class FakeSystem:
             return Result(0, "ok")
         if any(str(a).endswith("download-voice-model.py") for a in args):
             if self.download:
-                self.download(args[-1] if args[-1] in ("en", "sv") else "en")
+                self.download(args[-1] if args[-1] in LISTENING else "en")
             return Result(0, "Installed")
         if name == "systemctl":
             if "get-default" in args:
@@ -106,6 +143,7 @@ class Sandbox:
         (self.luna / "main.py").write_text("print('luna')\n")
         (self.luna / "robot_hud" / "app.py").write_text("")
         (self.luna / "scripts" / "download-voice-model.py").write_text("")
+        write_luna_catalogue(self.luna)
         self.paths = Paths(home=self.home, state_dir=self.home / "state")
         self.system = FakeSystem()
         self.system.download = self.make_voice_model
@@ -120,7 +158,7 @@ class Sandbox:
         return ctx
 
     def make_voice_model(self, language="en"):
-        model = self.paths.voice_model_for(language)
+        model = self.paths.listening_model(LISTENING[language])
         (model / "am").mkdir(parents=True)
         (model / "conf").mkdir(parents=True)
         (model / "am" / "final.mdl").write_text("")

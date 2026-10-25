@@ -39,8 +39,11 @@ A profile only sets the default selection. You can still turn individual feature
 
 ### Natural voice
 
-Installs `piper-tts` into Luna's environment and downloads four voices to
-`~/.ai-robot-models/piper` (outside the Luna folder, never in Git):
+Installs `piper-tts` into Luna's environment and downloads Luna's voices to
+`~/.ai-robot-models/piper` (outside the Luna folder, never in Git). The voice list is read from
+Luna's `robot_hud/voices.json`, and the listening models from her language packs
+(`robot_hud/languages/`), so a voice or language added to Luna is downloaded by the next
+Install or Repair, with no robot-setup change. Today's voices:
 
 | Language | Voice | Model | Size | Licence |
 |----------|-------|-------|------|---------|

@@ -261,7 +261,7 @@ Verification distinguishes **installed**, **running** and **working**:
 |-------|------|----------------|
 | Luna can start | auto | Luna's venv imports pygame |
 | Speaker / microphone found | auto | a playback / capture device exists (warning if not) |
-| Voice packages and models | auto | pinned packages present, English model files present; Swedish model missing is a warning (Luna listens in English) |
+| Voice packages and models | auto | pinned packages present, English model files present; another language's model missing is a warning (Luna listens in English) |
 | Natural voice engine and voices | auto | pinned `piper-tts`/`onnxruntime`; each voice file has the expected size and SHA-256 |
 | Speech from each natural voice | auto | Luna's venv loads each voice with Piper and makes one sentence (timings reported) |
 | AI package and settings | auto | openai installed; `.luna.env` is private and has key and model |
@@ -334,13 +334,20 @@ Operating system rollback and Luna version rollback are out of scope for 1.0.
   apt's `python3-pygame`.
 - Pinned Python packages: `vosk==0.3.45`, `sounddevice==0.5.6` (voice), `openai==3.37.0` (AI),
   `piper-tts==1.8.0`, `onnxruntime==1.31.0` (natural voice).
-- The listening models (`vosk-model-small-en-us-0.15` and `vosk-model-small-sv-rhasspy-0.15`,
-  about 290 MB, MIT, in `~/.ai-robot-models`) are downloaded with Luna's
-  `scripts/download-voice-model.py <en|sv>`, one task each (`voice-model`, `voice-model-sv`).
+- Voices and languages come from the Luna folder (`catalogue.py`), so Luna is the one source of
+  truth: `robot_hud/voices.json` (natural voices) and `robot_hud/languages/<code>.json` (each
+  language's `listening_model`). Everything is validated before use (safe file names and paths,
+  https base address, 64-character SHA-256, both model files); a missing or invalid catalogue
+  blocks the Natural voice feature with "Update Luna". An older Luna without language packs gets
+  the English listening model only.
+- The listening models (now `vosk-model-small-en-us-0.15` and `vosk-model-small-sv-rhasspy-0.15`,
+  about 330 MB, MIT, in `~/.ai-robot-models`) are downloaded with Luna's
+  `scripts/download-voice-model.py <code>`, one task each (`voice-model` for English,
+  `voice-model-<code>` for the others).
 - Natural voices are downloaded by Robot Setup itself to `~/.ai-robot-models/piper/`
-  (`<model>.onnx` + `<model>.onnx.json`). The catalogue in `config.PIPER_VOICES` pins every file
-  to one `rhasspy/piper-voices` commit with its size and SHA-256. Files are written to `.part`,
-  checked, then renamed. Replacing a voice means changing the catalogue only. Voices: English
+  (`<model>.onnx` + `<model>.onnx.json`). Luna's `voices.json` pins every file to one
+  `rhasspy/piper-voices` commit with its size and SHA-256. Files are written to `.part`,
+  checked, then renamed. Adding or replacing a voice means changing Luna's catalogue only. Voices: English
   `en_US-lessac-medium` (female), `en_US-ryan-high` (male); Swedish `sv_SE-alma-medium`
   (female), `sv_SE-nst-medium` (male). The English voices are provisional (non-commercial
   training data); a licensing review of all voices is required before distribution. Luna falls back to eSpeak when Piper or a voice is missing.

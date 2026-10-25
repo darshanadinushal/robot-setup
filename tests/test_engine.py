@@ -157,7 +157,7 @@ class EngineTests(unittest.TestCase):
         import shutil
         from robot_setup.modules import voice
         engine.install(self.box.context(features=("luna", "voice")))
-        swedish = self.box.paths.voice_model_for("sv")
+        swedish = self.box.paths.listening_model("vosk-model-small-sv-test")
         self.assertTrue((swedish / "am" / "final.mdl").is_file())
         self.assertTrue(self.box.paths.voice_model.exists())
         calls = [args[-1] for args, _ in self.box.system.calls

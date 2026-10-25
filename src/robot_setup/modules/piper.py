@@ -1,6 +1,6 @@
-"""Natural voice module (optional): Piper text-to-speech, English and Swedish voices.
+"""Natural voice module (optional): Piper text-to-speech and Luna's natural voices.
 
-Voices are stored outside the Luna checkout in ~/.ai-robot-models/piper. Each file is
+The voices come from Luna's robot_hud/voices.json (see catalogue.py). Voices are stored outside the Luna checkout in ~/.ai-robot-models/piper. Each file is
 downloaded to a .part file, checked by size and SHA-256, and only then renamed, so a broken
 or interrupted download is never used. Luna keeps working with eSpeak if this feature fails.
 """
@@ -14,7 +14,8 @@ import ssl
 import urllib.error
 import urllib.request
 
-from ..config import PIP_PINS, PIPER_VOICE_BASE, PIPER_VOICES, SetupError
+from .. import catalogue
+from ..config import PIP_PINS, SetupError
 from ..system import FAILED, PASSED, Check
 from .common import has_pinned, pip_install
 
@@ -55,6 +56,19 @@ FRIENDLY = {
 }
 
 
+def luna_voices(ctx):
+    """Luna's natural voices, read from the Luna folder."""
+    return catalogue.piper_voices(ctx.luna_dir)
+
+
+def known_voices(ctx):
+    """Luna's natural voices, or () if her catalogue is missing or invalid."""
+    try:
+        return luna_voices(ctx)
+    except SetupError:
+        return ()
+
+
 def fetch(url):
     """Open a download. Replaced in tests."""
     return urllib.request.urlopen(url, timeout=60)
@@ -89,7 +103,7 @@ def download_file(ctx, item):
     finished = False
     try:
         try:
-            with fetch(PIPER_VOICE_BASE + item.source) as response, open(part, "wb") as out:
+            with fetch(item.url) as response, open(part, "wb") as out:
                 for chunk in iter(lambda: response.read(CHUNK), b""):
                     received += len(chunk)
                     if received > item.size:
@@ -142,7 +156,7 @@ def synthesize(ctx, jobs):
 
 def generation_checks(ctx):
     """Make one sentence with each installed voice to prove Piper works on this device."""
-    ready = [v for v in PIPER_VOICES if voice_ready(ctx, v)]
+    ready = [v for v in known_voices(ctx) if voice_ready(ctx, v)]
     checks = []
     if ready:
         work = ctx.paths.state_dir / "piper-check"
@@ -172,7 +186,7 @@ def play_samples(ctx):
     work = ctx.paths.state_dir / "piper-check"
     work.mkdir(parents=True, exist_ok=True)
     jobs = [(v, work / f"{v.key.lower()}.wav", v.sample)
-            for v in PIPER_VOICES if voice_ready(ctx, v)]
+            for v in known_voices(ctx) if voice_ready(ctx, v)]
     if not jobs:
         return "No natural voice is installed. Run Repair."
     try:
@@ -201,7 +215,7 @@ def tasks(ctx):
              is_done=lambda c: has_pinned(c, PINS),
              apply=lambda c: pip_install(c, PINS), needs_network=True),
     ]
-    for voice in PIPER_VOICES:
+    for voice in known_voices(ctx):
         items.append(Task(
             f"piper-voice-{voice.key.lower()}", FEATURE, voice.label,
             (f"Download {voice.model} (about {voice.size_mb} MB) to {ctx.paths.piper_dir} "
@@ -212,6 +226,10 @@ def tasks(ctx):
 
 
 def preconditions(ctx):
+    try:
+        luna_voices(ctx)
+    except SetupError as error:
+        return [str(error)]
     return []
 
 
@@ -219,7 +237,12 @@ def verify(ctx):
     package = has_pinned(ctx, PINS)
     checks = [Check("piper-package", "Natural voice engine", PASSED if package else FAILED,
                     "" if package else "Run Repair.")]
-    for voice in PIPER_VOICES:
+    try:
+        voices = luna_voices(ctx)
+    except SetupError as error:
+        voices = ()
+        checks.append(Check("piper-voices", "Natural voice list", FAILED, str(error)))
+    for voice in voices:
         ready = voice_ready(ctx, voice)
         checks.append(Check(f"piper-voice-{voice.key.lower()}", f"Voice {voice.model}",
                             PASSED if ready else FAILED,
@@ -230,6 +253,7 @@ def verify(ctx):
 
 
 def remove(ctx):
-    total = sum(v.size_mb for v in PIPER_VOICES)
-    return [f"Natural voices kept in {ctx.paths.piper_dir} (about {total} MB). "
+    total = sum(v.size_mb for v in known_voices(ctx))
+    size = f" (about {total} MB)" if total else ""
+    return [f"Natural voices kept in {ctx.paths.piper_dir}{size}. "
             "Delete that folder to remove them."]

@@ -1,29 +1,22 @@
-import hashlib
 import io
 import json
 import ssl
 import unittest
 import urllib.error
+from pathlib import Path
 from unittest import mock
 
-from helpers import Sandbox
+from helpers import FAKE_BASE, LANGUAGE_PACKS, VOICE_CONTENT, Sandbox, fake_voice, \
+    write_luna_catalogue
 
-from robot_setup import checks, engine
-from robot_setup.config import PIPER_VOICE_BASE, PIPER_VOICES, PiperVoice, VoiceFile, \
-    resolve_features, PROFILES
+from robot_setup import catalogue, checks, engine
+from robot_setup.config import SetupError, resolve_features, PROFILES
 from robot_setup.modules import piper
 from robot_setup.state import State, VERIFIED
 
 FEATURES = ("luna", "piper")
-
-
-def fake_voice(key, model, content):
-    files = []
-    for suffix, data in ((".onnx", content), (".onnx.json", b"{}")):
-        files.append(VoiceFile(model + suffix, f"voices/{model}{suffix}", len(data),
-                               hashlib.sha256(data).hexdigest()))
-    return PiperVoice(key, key[:2].lower(), f"{key.lower()} voice", model, "test licence",
-                      f"Sample by {model}.", tuple(files))
+TEST_FILE_VOICE = fake_voice("EN_FEMALE", "en", "female", "Fem", "test-female")
+REAL_LUNA = Path(__file__).resolve().parents[2] / "ai-robot"
 
 
 class FakeServer:
@@ -49,15 +42,10 @@ class FakeServer:
 class PiperTests(unittest.TestCase):
     def setUp(self):
         self.box = Sandbox()
-        self.voices = (fake_voice("EN_FEMALE", "test-female", b"F" * 3000),
-                       fake_voice("SV_MALE", "test-male", b"M" * 5000))
-        content = {"test-female.onnx": b"F" * 3000, "test-male.onnx": b"M" * 5000,
-                   "test-female.onnx.json": b"{}", "test-male.onnx.json": b"{}"}
-        self.server = FakeServer(content)
-        for patcher in (mock.patch.object(piper, "PIPER_VOICES", self.voices),
-                        mock.patch.object(piper, "fetch", self.server)):
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        self.server = FakeServer(dict(VOICE_CONTENT))
+        patcher = mock.patch.object(piper, "fetch", self.server)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def tearDown(self):
         self.box.cleanup()
@@ -86,7 +74,7 @@ class PiperTests(unittest.TestCase):
         self.assertEqual(sorted(p.name for p in piper_dir.iterdir()),
                          ["test-female.onnx", "test-female.onnx.json",
                           "test-male.onnx", "test-male.onnx.json"])
-        self.assertTrue(all(u.startswith(PIPER_VOICE_BASE) for u in self.server.requests))
+        self.assertTrue(all(u.startswith(FAKE_BASE) for u in self.server.requests))
         self.assertEqual(self.box.system.pip, {"piper-tts": "1.8.0", "onnxruntime": "1.31.0"})
         state = State(self.box.paths.state_file).load()
         self.assertTrue(all(i["status"] == VERIFIED for i in state.tasks.values()))
@@ -135,7 +123,7 @@ class PiperTests(unittest.TestCase):
             self.assertEqual(found[key].status, "passed", (key, found[key].detail))
         self.assertIn("1.2 s of speech", found["piper-speech-sv_male"].detail)
         piper_calls = [c[0] for c in self.box.system.calls if "PiperVoice" in " ".join(c[0])]
-        self.assertIn("Sample by test-male.", piper_calls[-1], "each voice speaks its own sample")
+        self.assertIn("Hej sample.", piper_calls[-1], "each voice speaks its own language")
         self.assertEqual(list((self.box.paths.state_dir / "piper-check").iterdir()), [])
 
     def test_verify_explains_piper_failures(self):
@@ -161,7 +149,8 @@ class PiperTests(unittest.TestCase):
         self.install()
         ctx = self.box.context(features=FEATURES)
         check = next(c for c in checks.applicable(ctx) if c.id == "natural-voice")
-        self.assertEqual(check.test(ctx), "Played 2 of 2 voices: en_female voice, sv_male voice.")
+        self.assertEqual(check.test(ctx), "Played 2 of 2 voices: English female voice (Fem), "
+                         "Swedish male voice (Man).")
         played = [c[0] for c in self.box.system.calls if c[0][0] == "aplay"]
         self.assertEqual(len(played), 2)
         self.box.system.fail.add("aplay")
@@ -175,19 +164,78 @@ class PiperTests(unittest.TestCase):
 
 
 class CatalogueTests(unittest.TestCase):
-    def test_real_catalogue_is_pinned_and_complete(self):
-        self.assertIn("/resolve/5041a7a49ae5b3a0f30e6837769eb03fdbb231bd/", PIPER_VOICE_BASE)
-        self.assertEqual({v.key: v.model for v in PIPER_VOICES},
-                         {"EN_FEMALE": "en_US-lessac-medium", "EN_MALE": "en_US-ryan-high",
-                          "SV_FEMALE": "sv_SE-alma-medium", "SV_MALE": "sv_SE-nst-medium"})
-        for voice in PIPER_VOICES:
-            names = [f.name for f in voice.files]
-            self.assertEqual(names, [voice.model + ".onnx", voice.model + ".onnx.json"])
-            self.assertTrue(all(f.source.startswith(f"{voice.language}/") for f in voice.files))
-            self.assertTrue(all(len(f.sha256) == 64 for f in voice.files))
-            self.assertTrue(voice.license_note and voice.sample)
+    """Voices and listening languages come from Luna's folder and are validated."""
+
+    def setUp(self):
+        self.box = Sandbox()
+
+    def tearDown(self):
+        self.box.cleanup()
+
+    def test_voices_and_languages_are_read_from_luna(self):
+        voices = catalogue.piper_voices(self.box.luna)
+        self.assertEqual([v.key for v in voices], ["EN_FEMALE", "SV_MALE"])
+        self.assertEqual(voices[1].label, "Swedish male voice (Man)")
+        self.assertEqual(voices[1].sample, "Hej sample.")
+        self.assertEqual(voices[1].files[0].url, FAKE_BASE + "sv/test-male.onnx")
+        models = catalogue.listening_models(self.box.luna)
+        self.assertEqual([(m.language, m.size_mb) for m in models], [("en", 40), ("sv", 289)])
+
+    def test_a_new_voice_and_language_need_no_code_change(self):
+        packs = dict(LANGUAGE_PACKS, de={"code": "de", "name": "German", "native_name": "Deutsch",
+                                         "listening_model": "vosk-model-small-de-test"})
+        voices = [fake_voice("DE_FEMALE", "de", "female", "Eva", "test-female")]
+        write_luna_catalogue(self.box.luna, voices=voices, packs=packs)
+        ctx = self.box.context(features=("luna", "voice", "piper"))
+        ids = [t.id for t in engine.build_plan(ctx).pending]
+        self.assertIn("piper-voice-de_female", ids)
+        self.assertIn("voice-model-de", ids)
+
+    def test_missing_catalogue_asks_to_update_luna(self):
+        (self.box.luna / "robot_hud" / "voices.json").unlink()
+        ctx = self.box.context(features=FEATURES)
+        problems = piper.preconditions(ctx)
+        self.assertTrue(problems and "Update Luna" in problems[0])
+        self.assertEqual([t.id for t in piper.tasks(ctx)], ["piper-python"])
+        found = {c.id: c for c in piper.verify(ctx)}
+        self.assertEqual(found["piper-voices"].status, "failed")
+
+    def test_unsafe_entries_are_rejected(self):
+        bad = [
+            dict(TEST_FILE_VOICE, model="../evil"),
+            dict(TEST_FILE_VOICE, key="../X"),
+            dict(TEST_FILE_VOICE, files=[dict(f, name="../x.onnx") for f in TEST_FILE_VOICE["files"]]),
+            dict(TEST_FILE_VOICE, files=[dict(f, source="../../x") for f in TEST_FILE_VOICE["files"]]),
+            dict(TEST_FILE_VOICE, files=[dict(f, sha256="abc") for f in TEST_FILE_VOICE["files"]]),
+            dict(TEST_FILE_VOICE, files=TEST_FILE_VOICE["files"][:1]),
+        ]
+        for voice in bad:
+            write_luna_catalogue(self.box.luna, voices=[voice])
+            with self.assertRaises(SetupError, msg=voice):
+                catalogue.piper_voices(self.box.luna)
+        write_luna_catalogue(self.box.luna, base="http://insecure.example/")
+        with self.assertRaisesRegex(SetupError, "https"):
+            catalogue.piper_voices(self.box.luna)
+        write_luna_catalogue(self.box.luna, voices=[TEST_FILE_VOICE, TEST_FILE_VOICE])
+        with self.assertRaisesRegex(SetupError, "duplicate"):
+            catalogue.piper_voices(self.box.luna)
+
+    def test_older_luna_without_language_packs_listens_in_english(self):
+        import shutil
+        shutil.rmtree(self.box.luna / "robot_hud" / "languages")
+        models = catalogue.listening_models(self.box.luna)
+        self.assertEqual([(m.language, m.model) for m in models],
+                         [("en", "vosk-model-small-en-us-0.15")])
+
+    @unittest.skipUnless((REAL_LUNA / "robot_hud" / "voices.json").is_file(),
+                         "the Luna repository is not next to robot-setup")
+    def test_real_luna_catalogue_is_valid_and_pinned(self):
+        voices = catalogue.piper_voices(REAL_LUNA)
+        self.assertTrue(all("/resolve/5041a7a49ae5b3a0f30e6837769eb03fdbb231bd/" in f.url
+                            for v in voices for f in v.files))
         self.assertTrue(all("non-commercial" in v.license_note
-                            for v in PIPER_VOICES if v.language == "en"))
+                            for v in voices if v.language == "en"))
+        self.assertEqual(catalogue.listening_models(REAL_LUNA)[0].language, "en")
 
 
 if __name__ == "__main__":
