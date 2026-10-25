@@ -1,0 +1,13 @@
+Package: robot-setup
+Version: @VERSION@
+Section: admin
+Priority: optional
+Architecture: all
+Depends: python3 (>= 3.11), python3-gi, gir1.2-gtk-4.0, pkexec | policykit-1, sudo
+Maintainer: Robot Setup maintainers <https://github.com/darshanadinushal/robot-setup/issues>
+Homepage: https://github.com/darshanadinushal/robot-setup
+Description: one-time setup wizard for the Luna robot on Raspberry Pi
+ Robot Setup installs and configures Luna (robot face, offline voice, optional
+ online AI and automatic startup) on Raspberry Pi OS. It runs once, can be
+ reopened to repair or add features, and is not needed while Luna runs.
+ Installing this package changes nothing else; open Robot Setup to start.

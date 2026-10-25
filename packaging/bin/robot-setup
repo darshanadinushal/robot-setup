@@ -1,0 +1,10 @@
+#!/usr/bin/python3 -I
+"""Robot Setup launcher installed by the .deb package."""
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, "/usr/lib/robot-setup")
+
+from robot_setup.cli import main  # noqa: E402
+
+sys.exit(main())

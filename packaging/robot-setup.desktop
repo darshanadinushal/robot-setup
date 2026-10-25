@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Robot Setup
+Comment=Set up Luna and robot features
+Exec=robot-setup gui
+Icon=preferences-system
+Terminal=false
+Categories=Settings;System;

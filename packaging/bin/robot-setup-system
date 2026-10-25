@@ -1,0 +1,10 @@
+#!/usr/bin/python3 -I
+"""Root helper for Robot Setup. Started only through pkexec or sudo; accepts allow-listed operations."""
+import sys
+
+sys.dont_write_bytecode = True
+sys.path.insert(0, "/usr/lib/robot-setup")
+
+from robot_setup.privileged import main  # noqa: E402
+
+sys.exit(main())

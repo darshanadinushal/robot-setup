@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robot-setup"
+dynamic = ["version"]
+description = "One-time setup wizard for the Luna robot on Raspberry Pi"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.11"
+# Runtime dependencies (PyGObject, GTK 4) come from apt on Raspberry Pi OS, not pip.
+dependencies = []
+
+[project.scripts]
+robot-setup = "robot_setup.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "robot_setup.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
