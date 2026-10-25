@@ -74,7 +74,7 @@ Luna keeps using her basic voice until her speech engine supports Piper.
 2. Install it:
 
    ```bash
-   sudo apt install ./robot-setup_0.2.0_all.deb
+   sudo apt install ./robot-setup_0.3.0_all.deb
    ```
 
 3. Open **Robot Setup** from the applications menu, or run `robot-setup`.
@@ -83,6 +83,16 @@ Luna keeps using her basic voice until her speech engine supports Piper.
 
 Installing the package only installs the wizard. Nothing on the system changes until you confirm
 the plan in the wizard.
+
+**Updating:** the installed package does not follow GitHub. Update Luna first (`git pull` in her
+folder, since robot-setup reads her voices and languages), then build and install the new
+package and run `robot-setup repair` to add anything new, such as a new language's model:
+
+```bash
+cd ~/robot-setup && git pull --ff-only && bash packaging/build-deb.sh
+sudo apt install ./build/robot-setup_<version>_all.deb
+robot-setup repair && robot-setup verify
+```
 
 ## Command line
 
