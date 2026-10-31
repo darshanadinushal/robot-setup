@@ -4,7 +4,7 @@ from pathlib import Path
 
 from helpers import TEST_KEY, Sandbox, pi_device
 
-from robot_setup import engine
+from robot_setup import engine, files
 from robot_setup.config import SetupError
 from robot_setup.modules import startup
 from robot_setup.state import FAILED, PENDING, RUNNING, VERIFIED, State
@@ -195,6 +195,24 @@ class StartupTests(unittest.TestCase):
         self.assertIn("StartLimitBurst=5", unit)
         self.assertIn("--fullscreen", unit)
         self.assertNotIn("[Install]", unit)  # started only by the session autostart entry
+
+    def test_unit_limits_malloc_arenas_and_older_installs_are_updated(self):
+        self.assertIn("\nEnvironment=MALLOC_ARENA_MAX=2\n", startup.render_unit(self.box.context()))
+        features = ("luna", "startup")
+        self.assertTrue(engine.install(self.box.context(features=features)).ok)
+        # A unit written by Robot Setup 0.4.0 and earlier (no MALLOC_ARENA_MAX).
+        unit = self.box.paths.systemd_unit
+        old = unit.read_text().replace("Environment=MALLOC_ARENA_MAX=2\n", "")
+        unit.write_bytes(old.encode())
+        state = State(self.box.paths.state_file).load()
+        state.own(unit, files.sha256_bytes(old.encode()), "startup-files")
+        state.save()
+        check = next(c for c in startup.verify(self.box.context(features=features))
+                     if c.id == "startup-files")
+        self.assertEqual(check.status, "failed")  # "Run Repair."
+        self.assertTrue(engine.install(self.box.context(features=features)).ok)
+        self.assertIn("MALLOC_ARENA_MAX=2", unit.read_text())
+        self.assertEqual(State(self.box.paths.state_file).load().data["backups"], [])
 
     def test_launcher_passes_display_to_user_manager(self):
         launcher = startup.render_launcher(self.box.context())

@@ -71,6 +71,9 @@ def render_unit(ctx):
         "Restart=on-failure\n"
         "RestartSec=5\n"
         "Environment=PYTHONUNBUFFERED=1\n"
+        # As Luna Core's run-pi.sh: fewer glibc malloc arenas for Luna's threads, less memory.
+        # Override with `systemctl --user edit luna`.
+        "Environment=MALLOC_ARENA_MAX=2\n"
     )
 
 

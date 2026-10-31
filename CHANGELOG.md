@@ -3,6 +3,11 @@
 Robot Setup versions (`src/robot_setup/__init__.py`, the `.deb` package version). Releases will
 be git tags `vX.Y.Z`; fixes for a release go on a `release/X.Y.Z` branch.
 
+## Unreleased
+- `luna.service` sets `MALLOC_ARENA_MAX=2`, as Luna Core's `run-pi.sh` does, so Luna uses less
+  memory on the Pi when Robot Setup starts her. Existing installs: run `robot-setup repair` once
+  (`verify` shows "Startup files: Run Repair" until then).
+
 ## 0.4.0 (2026-10-31)
 - Works with Luna Core 1.x (`darshanadinushal/ai-robot`, stable tag `v1.0.1`, which also works with Robot Setup's startup): Luna is found by
   `luna_core/app.py`, voices and languages are read from `luna_core/`. An older Luna with only
