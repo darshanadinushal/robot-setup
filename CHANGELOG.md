@@ -3,7 +3,7 @@
 Robot Setup versions (`src/robot_setup/__init__.py`, the `.deb` package version). Releases will
 be git tags `vX.Y.Z`; fixes for a release go on a `release/X.Y.Z` branch.
 
-## 0.4.0 (unreleased)
+## 0.4.0 (2026-10-31)
 - Works with Luna Core 1.x (`darshanadinushal/ai-robot`, stable tag `v1.0.1`, which also works with Robot Setup's startup): Luna is found by
   `luna_core/app.py`, voices and languages are read from `luna_core/`. An older Luna with only
   `robot_hud/` still installs; `verify` warns and suggests `robot-setup upgrade-luna v1.0.1`.
