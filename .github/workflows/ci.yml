@@ -9,10 +9,12 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13"]
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+        python-version: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,6 +26,10 @@ jobs:
           ROBOT_SETUP_REQUIRE_SYSTEMD: "1"  # luna.service must pass systemd-analyze verify
       - name: Compile all sources
         run: python -m compileall -q src
+      - name: Install Python package and check CLI
+        run: |
+          python -m pip install --no-deps -e .
+          robot-setup --version
 
   package:
     runs-on: ubuntu-latest
@@ -40,3 +46,11 @@ jobs:
         with:
           name: robot-setup-deb
           path: build/robot-setup_*_all.deb
+      - name: Smoke-test extracted Debian package
+        run: |
+          folder="$(mktemp -d)"
+          dpkg-deb --extract build/robot-setup_*_all.deb "$folder"
+          test -x "$folder/usr/bin/robot-setup"
+          test -x "$folder/usr/lib/robot-setup/robot-setup-system"
+          PYTHONPATH="$folder/usr/lib/robot-setup" python3 -m robot_setup --version
+          rm -rf "$folder"

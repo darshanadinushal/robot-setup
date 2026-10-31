@@ -15,7 +15,11 @@ SYSTEM_PYTHON = "/usr/bin/python3"
 
 def is_luna_dir(path):
     path = Path(path)
-    return (path / "main.py").is_file() and (path / "robot_hud" / "app.py").is_file()
+    # Luna Core 1.x uses luna_core/; older checkouts used robot_hud/.
+    # No import or process launch: detection must work before dependencies are installed.
+    return (path / "main.py").is_file() and any(
+        (path / package / "app.py").is_file() for package in ("luna_core", "robot_hud")
+    )
 
 
 def find_luna_dirs(home):

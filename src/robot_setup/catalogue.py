@@ -1,7 +1,7 @@
 """Luna's voices and listening languages, read from the Luna folder (one source of truth).
 
-Luna's robot_hud/voices.json lists the natural (Piper) voices with the size and SHA-256 of every
-file, and robot_hud/languages/<code>.json names each language's offline listening model. When a
+Luna's luna_core/voices.json (previously robot_hud/voices.json) lists the natural (Piper) voices with the size and SHA-256 of every
+file, and luna_core/languages/<code>.json names each language's offline listening model. When a
 voice or language is added to Luna, robot-setup downloads it on the next Install or Repair.
 Everything is validated first, because file names become paths on disk and the SHA-256 values
 decide which downloads are trusted.
@@ -57,11 +57,17 @@ class ListeningModel:
 
 
 def voices_file(luna_dir):
-    return Path(luna_dir) / "robot_hud" / "voices.json"
+    """Prefer Luna Core 1.x metadata; fall back to the old robot_hud path."""
+    root = Path(luna_dir)
+    current = root / "luna_core" / "voices.json"
+    return current if current.is_file() else root / "robot_hud" / "voices.json"
 
 
 def languages_dir(luna_dir):
-    return Path(luna_dir) / "robot_hud" / "languages"
+    """Use the canonical Luna Core languages when present, or legacy packs."""
+    root = Path(luna_dir)
+    current = root / "luna_core" / "languages"
+    return current if current.is_dir() else root / "robot_hud" / "languages"
 
 
 def _read(path):

@@ -41,8 +41,8 @@ A profile only sets the default selection. You can still turn individual feature
 
 Installs `piper-tts` into Luna's environment and downloads Luna's voices to
 `~/.ai-robot-models/piper` (outside the Luna folder, never in Git). The voice list is read from
-Luna's `robot_hud/voices.json`, and the listening models from her language packs
-(`robot_hud/languages/`), so a voice or language added to Luna is downloaded by the next
+Luna Core's `luna_core/voices.json`, and listening models from
+`luna_core/languages/` (falling back to the older `robot_hud/` paths), so a voice or language added to Luna is downloaded by the next
 Install or Repair, with no robot-setup change. Today's voices:
 
 | Language | Voice | Model | Size | Licence |
@@ -70,11 +70,15 @@ Luna keeps using her basic voice until her speech engine supports Piper.
 
 ## Install
 
+**Release candidate:** 1.0.0rc1 is for validation, not the final stable release. Back up
+`~/.local/state/robot-setup`, `~/.luna.env`, Luna settings, and the existing `.deb`
+before upgrading a working Pi. This wizard does not update Luna Core automatically.
+
 1. Download `robot-setup_<version>_all.deb` from the releases page, or build it yourself (see below).
 2. Install it:
 
    ```bash
-   sudo apt install ./robot-setup_0.3.0_all.deb
+   sudo apt install ./robot-setup_1.0.0~rc1_all.deb
    ```
 
 3. Open **Robot Setup** from the applications menu, or run `robot-setup`.
@@ -116,6 +120,11 @@ Useful options: `--profile minimal|standard|custom`, `--with FEATURE`, `--withou
 Run Robot Setup as your normal user, not with `sudo`. It asks for administrator permission only
 for system changes: through a password window in the desktop, or through `sudo` over SSH.
 
+**One startup owner:** Robot Setup and Luna Core each have a service-installation command.
+Do not run Luna Core's `scripts/install-service.sh` if Robot Setup already manages
+`luna.service`. Keep the existing startup owner; `robot-setup verify` checks it.
+Robot Setup supports both the `luna_core/` layout and older `robot_hud/` installs.
+
 ## What `remove` keeps
 
 `robot-setup remove` deletes only the files Robot Setup created that nobody has changed since.
@@ -154,7 +163,8 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design specification.
 
 | Version | Scope |
 |---------|-------|
-| 1.0 | Luna, offline voice, natural voice, online AI, automatic startup, hardware checks, repair and remove |
+| 1.0.0rc1 | Release candidate: Luna Core 1.x compatibility, packaging and Pi regression checks |
+| 1.0.0 | Stable release after CI and real Raspberry Pi acceptance tests |
 | 1.x | Audio device selection, log viewer, setup report export |
 | 2.0 | Home automation, network setup, camera and sensors |
 | Later | Verified Luna releases, signed packages, ready-made Raspberry Pi OS image |
