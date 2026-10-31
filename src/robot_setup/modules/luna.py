@@ -5,7 +5,9 @@ import os
 import shutil
 from pathlib import Path
 
-from ..config import LUNA_DIR_CANDIDATES, LUNA_PACKAGES, SetupError
+from .. import lunainfo
+from ..config import LUNA_DIR_CANDIDATES, LUNA_PACKAGES, LUNA_STABLE_TAG, LUNA_SUPPORTED_MAJORS, \
+    SetupError
 from ..system import FAILED, PASSED, WARNING, Check
 from .common import has_sound_card, missing_packages
 
@@ -14,8 +16,8 @@ SYSTEM_PYTHON = "/usr/bin/python3"
 
 
 def is_luna_dir(path):
-    path = Path(path)
-    return (path / "main.py").is_file() and (path / "robot_hud" / "app.py").is_file()
+    """main.py plus Luna's package: luna_core/ (Luna Core 1.0+) or robot_hud/ (older Luna)."""
+    return (Path(path) / "main.py").is_file() and lunainfo.package_dir(path) is not None
 
 
 def find_luna_dirs(home):
@@ -78,10 +80,27 @@ def tasks(ctx):
     ]
 
 
+def version_check(ctx):
+    """Is this Luna a Luna Core version Robot Setup supports? (Reads a file; starts nothing.)"""
+    def check(status, detail):
+        return Check("luna-version", "Luna Core version", status, detail)
+
+    found = lunainfo.version(ctx.luna_dir)
+    if found is None:
+        return check(WARNING, "Older Luna without Luna Core: still supported, but upgrade with "
+                              f"'robot-setup upgrade-luna {LUNA_STABLE_TAG}'.")
+    numbers = lunainfo.version_tuple(found)
+    if numbers is None or numbers[0] not in LUNA_SUPPORTED_MAJORS:
+        return check(WARNING, f"Luna Core {found} is not a version this Robot Setup was tested "
+                              f"with ({LUNA_STABLE_TAG}). Update Robot Setup.")
+    return check(PASSED, f"Luna Core {found}")
+
+
 def verify(ctx):
-    checks = [Check("luna-runtime", "Luna can start (pygame)",
-                    PASSED if venv_ready(ctx) else FAILED,
-                    "" if venv_ready(ctx) else "Run Repair.")]
+    ready = venv_ready(ctx)  # starts Python and imports pygame: do it once
+    checks = [Check("luna-runtime", "Luna can start (pygame)", PASSED if ready else FAILED,
+                    "" if ready else "Run Repair."),
+              version_check(ctx)]
     speaker = has_sound_card(ctx, "aplay")
     checks.append(Check("speaker-device", "Speaker found", PASSED if speaker else WARNING,
                         "" if speaker else "No audio output device found."))

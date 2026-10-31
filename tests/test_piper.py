@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import ssl
 import unittest
 import urllib.error
@@ -16,7 +17,9 @@ from robot_setup.state import State, VERIFIED
 
 FEATURES = ("luna", "piper")
 TEST_FILE_VOICE = fake_voice("EN_FEMALE", "en", "female", "Fem", "test-female")
-REAL_LUNA = Path(__file__).resolve().parents[2] / "ai-robot"
+# The real Luna (ai-robot) checkout: next to robot-setup, or ROBOT_SETUP_LUNA_DIR (CI).
+REAL_LUNA = Path(os.environ.get("ROBOT_SETUP_LUNA_DIR")
+                 or Path(__file__).resolve().parents[2] / "ai-robot")
 
 
 class FakeServer:
@@ -192,7 +195,7 @@ class CatalogueTests(unittest.TestCase):
         self.assertIn("voice-model-de", ids)
 
     def test_missing_catalogue_asks_to_update_luna(self):
-        (self.box.luna / "robot_hud" / "voices.json").unlink()
+        catalogue.voices_file(self.box.luna).unlink()
         ctx = self.box.context(features=FEATURES)
         problems = piper.preconditions(ctx)
         self.assertTrue(problems and "Update Luna" in problems[0])
@@ -222,12 +225,12 @@ class CatalogueTests(unittest.TestCase):
 
     def test_older_luna_without_language_packs_listens_in_english(self):
         import shutil
-        shutil.rmtree(self.box.luna / "robot_hud" / "languages")
+        shutil.rmtree(catalogue.languages_dir(self.box.luna))
         models = catalogue.listening_models(self.box.luna)
         self.assertEqual([(m.language, m.model) for m in models],
                          [("en", "vosk-model-small-en-us-0.15")])
 
-    @unittest.skipUnless((REAL_LUNA / "robot_hud" / "voices.json").is_file(),
+    @unittest.skipUnless(catalogue.voices_file(REAL_LUNA).is_file(),
                          "the Luna repository is not next to robot-setup")
     def test_real_luna_catalogue_is_valid_and_pinned(self):
         voices = catalogue.piper_voices(REAL_LUNA)

@@ -4,14 +4,17 @@ from __future__ import annotations
 import argparse
 import getpass
 import os
+import re
+import shlex
 import sys
 from pathlib import Path
 
-from . import __version__, checks, engine
-from .config import FEATURE_TITLES, FEATURES, PROFILES, Paths, Request, SetupError, resolve_features
-from .modules.luna import find_luna_dirs
-from .state import State
-from .system import detect_device, device_checks
+from . import __version__, checks, engine, lunainfo
+from .config import FEATURE_TITLES, FEATURES, LUNA_STABLE_TAG, PROFILES, Paths, Request, \
+    SetupError, resolve_features
+from .modules.luna import find_luna_dirs, is_luna_dir
+from .state import State, locked
+from .system import Runner, detect_device, device_checks
 
 MARKS = {"passed": "[ ok ]", "failed": "[FAIL]", "warning": "[warn]", "skipped": "[skip]",
          "pending": "[wait]", "verified": "[ ok ]", "running": "[....]"}
@@ -148,7 +151,7 @@ def cmd_status(args):
         print("Robot Setup has not installed anything yet.")
         return 0
     print("Features:    " + ", ".join(FEATURE_TITLES[f] for f in request["features"]))
-    print(f"Luna folder: {request['luna_dir']}")
+    print(f"Luna folder: {request['luna_dir']} ({lunainfo.describe(request['luna_dir'])})")
     print(f"Updated:     {state.data.get('updated')}")
     print("Steps")
     for task_id, info in sorted(state.tasks.items()):
@@ -172,6 +175,65 @@ def cmd_remove(args):
     for line in engine.remove_all(ctx):
         print(line)
     return 0
+
+
+def luna_dir_for(args, paths):
+    """--luna-dir, else the saved setup's folder, else ~/luna or ~/ai-robot."""
+    if getattr(args, "luna_dir", None):
+        return Path(args.luna_dir).expanduser().resolve()
+    saved = State(paths.state_file).load().data.get("request")
+    if saved and saved.get("luna_dir"):
+        return Path(saved["luna_dir"])
+    found = find_luna_dirs(paths.home)
+    if found:
+        return found[0]
+    raise SetupError("Luna was not found. Add --luna-dir FOLDER.")
+
+
+def run_luna_script(args, name, script_args, question):
+    """Run one of Luna Core's own deployment scripts (upgrade-pi.sh, rollback-pi.sh). They back
+    up Luna's settings, memories and plugin choices and check that Luna starts; Robot Setup does
+    not repeat that work."""
+    paths = Paths.for_user()
+    luna_dir = luna_dir_for(args, paths)
+    if not is_luna_dir(luna_dir):
+        raise SetupError(f"Luna was not found in {luna_dir}.")
+    script = luna_dir / "scripts" / name
+    if not script.is_file():
+        raise SetupError(
+            f"{script} is missing: this Luna is older than Luna Core 1.0. Update it once with "
+            f"git: cd {shlex.quote(str(luna_dir))} && git fetch --tags && "
+            f"git checkout {LUNA_STABLE_TAG}   then run: robot-setup repair")
+    print(f"Luna folder: {luna_dir} ({lunainfo.describe(luna_dir)})")
+    if not confirm(question, args.yes):
+        print("Nothing was changed.")
+        return 1
+    with locked(paths):
+        result = Runner().run(["bash", script, *script_args], cwd=luna_dir,
+                              on_line=print, stream="all")
+    print(f"Luna folder: {luna_dir} ({lunainfo.describe(luna_dir)})")
+    if not result.ok:
+        print(f"{name} failed (exit code {result.returncode}); see the messages above.")
+        return 1
+    if State(paths.state_file).load().data.get("request"):
+        print("Next: robot-setup repair   (downloads voices or languages this version added)")
+    return 0
+
+
+def cmd_upgrade_luna(args):
+    if not lunainfo.GIT_REF.match(args.version):
+        raise SetupError(f"Not a version: {args.version!r}. Use a tag such as {LUNA_STABLE_TAG}.")
+    if not re.match(r"^v\d+\.\d+\.\d+$", args.version):
+        print(f"Note: {args.version} is not a release tag. Stable releases are tags such as "
+              f"{LUNA_STABLE_TAG}.")
+    return run_luna_script(args, "upgrade-pi.sh", [args.version],
+                           f"Upgrade Luna to {args.version}? (settings, memories and plugin "
+                           "choices are backed up first)")
+
+
+def cmd_rollback_luna(args):
+    return run_luna_script(args, "rollback-pi.sh", ["--with-data"] if args.with_data else [],
+                           "Go back to the Luna version before the last upgrade?")
 
 
 def cmd_gui(args):
@@ -226,13 +288,27 @@ def build_parser():
     sub.add_parser("status", help="show what Robot Setup did")
     remove = sub.add_parser("remove", help="undo Robot Setup's changes (keeps your data)")
     remove.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    upgrade = sub.add_parser("upgrade-luna",
+                             help=f"upgrade Luna with her own upgrade script (default {LUNA_STABLE_TAG})")
+    upgrade.add_argument("version", nargs="?", default=LUNA_STABLE_TAG,
+                         help=f"release tag (default {LUNA_STABLE_TAG}); a branch is for testing only")
+    upgrade.add_argument("--luna-dir", help="folder that contains Luna's main.py")
+    upgrade.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    rollback = sub.add_parser("rollback-luna",
+                              help="go back to the Luna version before the last upgrade")
+    rollback.add_argument("--with-data", action="store_true",
+                          help="also restore the settings, memories and plugin choices "
+                               "saved by the last upgrade")
+    rollback.add_argument("--luna-dir", help="folder that contains Luna's main.py")
+    rollback.add_argument("--yes", action="store_true", help="do not ask for confirmation")
     gui = sub.add_parser("gui", help="open the setup wizard")
     gui.add_argument("--allow-unsupported", action="store_true")
     return parser
 
 
 COMMANDS = {"check": cmd_check, "plan": cmd_plan, "install": cmd_install, "repair": cmd_install,
-            "verify": cmd_verify, "status": cmd_status, "remove": cmd_remove, "gui": cmd_gui}
+            "verify": cmd_verify, "status": cmd_status, "remove": cmd_remove, "gui": cmd_gui,
+            "upgrade-luna": cmd_upgrade_luna, "rollback-luna": cmd_rollback_luna}
 
 
 def main(argv=None):

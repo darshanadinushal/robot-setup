@@ -39,15 +39,18 @@ TEST_VOICES = [fake_voice("EN_FEMALE", "en", "female", "Fem", "test-female"),
                fake_voice("SV_MALE", "sv", "male", "Man", "test-male")]
 
 
-def write_luna_catalogue(luna, voices=None, packs=None, base=FAKE_BASE):
-    """Write Luna's voices.json and language packs into a fake Luna folder."""
-    folder = Path(luna) / "robot_hud" / "languages"
+def write_luna_catalogue(luna, voices=None, packs=None, base=FAKE_BASE, package=None):
+    """Write Luna's voices.json and language packs into a fake Luna folder (into luna_core/
+    when it exists, else robot_hud/)."""
+    if package is None:
+        package = "luna_core" if (Path(luna) / "luna_core").is_dir() else "robot_hud"
+    folder = Path(luna) / package / "languages"
     folder.mkdir(parents=True, exist_ok=True)
     for code, pack in (LANGUAGE_PACKS if packs is None else packs).items():
         (folder / f"{code}.json").write_text(json.dumps(pack), encoding="utf-8")
     catalogue = {"default": "EN_FEMALE", "download_base": base,
                  "voices": TEST_VOICES if voices is None else voices}
-    (Path(luna) / "robot_hud" / "voices.json").write_text(json.dumps(catalogue), encoding="utf-8")
+    (Path(luna) / package / "voices.json").write_text(json.dumps(catalogue), encoding="utf-8")
 
 
 def pi_device(**changes):
@@ -82,8 +85,10 @@ class FakeSystem:
         if name in self.fail or (len(args) > 2 and args[1:3] == ["-m", "venv"] and "venv" in self.fail):
             return Result(1, "", "failed")
         if name == "dpkg-query":
-            installed = args[-1] in self.packages
-            return Result(0 if installed else 1, "install ok installed" if installed else "")
+            # One call for many packages: lists the installed ones, fails if any is missing.
+            wanted = args[3:]
+            lines = [f"{p} install ok installed" for p in wanted if p in self.packages]
+            return Result(0 if len(lines) == len(wanted) else 1, "\n".join(lines))
         if len(args) > 3 and args[1:3] == ["-m", "venv"]:
             venv = Path(args[-1])
             (venv / "bin").mkdir(parents=True, exist_ok=True)
@@ -132,16 +137,20 @@ class FakeSystem:
 
 
 class Sandbox:
-    """A temporary home with a Luna checkout."""
+    """A temporary home with a Luna checkout: Luna Core 1.0 (luna_core/) by default, or the
+    older layout with only robot_hud/ (legacy=True)."""
 
-    def __init__(self):
+    def __init__(self, legacy=False):
         self.tmp = tempfile.TemporaryDirectory()
         self.home = Path(self.tmp.name)
         self.luna = self.home / "luna"
-        (self.luna / "robot_hud").mkdir(parents=True)
+        package = self.luna / ("robot_hud" if legacy else "luna_core")
+        package.mkdir(parents=True)
         (self.luna / "scripts").mkdir()
         (self.luna / "main.py").write_text("print('luna')\n")
-        (self.luna / "robot_hud" / "app.py").write_text("")
+        (package / "app.py").write_text("")
+        if not legacy:
+            (package / "__init__.py").write_text('__version__ = "1.0.0"\n')
         (self.luna / "scripts" / "download-voice-model.py").write_text("")
         write_luna_catalogue(self.luna)
         self.paths = Paths(home=self.home, state_dir=self.home / "state")

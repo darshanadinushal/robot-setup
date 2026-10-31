@@ -30,6 +30,7 @@ def empty_state():
         "checks": {},
         "install_boot_id": None,
         "autologin": None,
+        "replaced_startup": [],  # Luna Core startup files replaced by Robot Setup (path, backup)
     }
 
 

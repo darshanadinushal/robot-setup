@@ -3,15 +3,23 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      luna_ref:
+        description: "Extra ai-robot (Luna Core) branch or tag to test against"
+        required: false
+        default: ""
 
 permissions:
   contents: read
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]  # ARM: as on the Raspberry Pi
         python-version: ["3.11", "3.13"]
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +32,32 @@ jobs:
           ROBOT_SETUP_REQUIRE_SYSTEMD: "1"  # luna.service must pass systemd-analyze verify
       - name: Compile all sources
         run: python -m compileall -q src
+
+  luna-core:
+    # The tests again against the real Luna Core: its layout, voice/language catalogue and
+    # scripts/install-service.sh (one luna.service between both projects).
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        luna-ref: ${{ fromJSON(inputs.luna_ref && format('["v1.0.0","main","{0}"]', inputs.luna_ref) || '["v1.0.0","main"]') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: darshanadinushal/ai-robot
+          ref: ${{ matrix.luna-ref }}
+          path: luna
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"  # Raspberry Pi OS Bookworm
+      - name: Tests with the real Luna Core
+        run: python -m unittest discover -s tests -v
+        env:
+          ROBOT_SETUP_LUNA_DIR: ${{ github.workspace }}/luna
+          ROBOT_SETUP_REQUIRE_SYSTEMD: "1"
+      - name: Luna Core version seen by Robot Setup
+        run: PYTHONPATH=src python -c "from pathlib import Path; from robot_setup import lunainfo; print(lunainfo.describe(Path('luna')))"
 
   package:
     runs-on: ubuntu-latest

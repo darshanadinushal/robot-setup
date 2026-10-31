@@ -1,7 +1,8 @@
 """Luna's voices and listening languages, read from the Luna folder (one source of truth).
 
-Luna's robot_hud/voices.json lists the natural (Piper) voices with the size and SHA-256 of every
-file, and robot_hud/languages/<code>.json names each language's offline listening model. When a
+Luna's voices.json lists the natural (Piper) voices with the size and SHA-256 of every file, and
+languages/<code>.json names each language's offline listening model. Both are in luna_core/ for
+Luna Core 1.0 and later, and in robot_hud/ for older Luna (lunainfo.data_dir). When a
 voice or language is added to Luna, robot-setup downloads it on the next Install or Repair.
 Everything is validated first, because file names become paths on disk and the SHA-256 values
 decide which downloads are trusted.
@@ -13,6 +14,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import lunainfo
 from .config import VOICE_MODEL_NAME, SetupError
 
 SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,120}$")
@@ -57,11 +59,11 @@ class ListeningModel:
 
 
 def voices_file(luna_dir):
-    return Path(luna_dir) / "robot_hud" / "voices.json"
+    return lunainfo.data_dir(luna_dir) / "voices.json"
 
 
 def languages_dir(luna_dir):
-    return Path(luna_dir) / "robot_hud" / "languages"
+    return lunainfo.data_dir(luna_dir) / "languages"
 
 
 def _read(path):

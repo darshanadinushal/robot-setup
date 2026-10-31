@@ -1,6 +1,6 @@
 """Natural voice module (optional): Piper text-to-speech and Luna's natural voices.
 
-The voices come from Luna's robot_hud/voices.json (see catalogue.py). Voices are stored outside the Luna checkout in ~/.ai-robot-models/piper. Each file is
+The voices come from Luna's voices.json (luna_core/ or, in older Luna, robot_hud/; see catalogue.py). Voices are stored outside the Luna checkout in ~/.ai-robot-models/piper. Each file is
 downloaded to a .part file, checked by size and SHA-256, and only then renamed, so a broken
 or interrupted download is never used. Luna keeps working with eSpeak if this feature fails.
 """

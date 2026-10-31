@@ -19,13 +19,18 @@ VERSION_SCRIPT = (
 
 
 def missing_packages(ctx, packages):
-    """apt packages that are not installed (checked without root)."""
-    missing = []
-    for name in packages:
-        result = ctx.runner.run(["dpkg-query", "-W", "-f=${Status}", name])
-        if not (result.ok and "install ok installed" in result.stdout):
-            missing.append(name)
-    return missing
+    """apt packages that are not installed (checked without root, in one dpkg-query call)."""
+    packages = list(packages)
+    if not packages:
+        return []
+    # Exits non-zero when any package is unknown, but still lists the known ones.
+    result = ctx.runner.run(["dpkg-query", "-W", "-f=${Package} ${Status}\\n", *packages])
+    installed = set()
+    for line in result.stdout.splitlines():
+        name, _, status = line.partition(" ")
+        if status.strip() == "install ok installed":
+            installed.add(name.split(":", 1)[0])
+    return [name for name in packages if name not in installed]
 
 
 def venv_versions(ctx, names):

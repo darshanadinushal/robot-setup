@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from . import privileged
+from . import lunainfo, privileged
 from .config import FEATURE_TITLES, FEATURES, Paths, Request, SetupError
 from .state import FAILED, PENDING, RUNNING, VERIFIED, State, locked
 from .system import Runner, detect_device, device_checks
@@ -105,7 +105,7 @@ def build_plan(ctx):
 def describe_plan(ctx, plan):
     lines = [
         "Features:    " + ", ".join(FEATURE_TITLES[f] for f in ctx.request.features),
-        f"Luna folder: {ctx.luna_dir}",
+        f"Luna folder: {ctx.luna_dir} ({lunainfo.describe(ctx.luna_dir)})",
     ]
     if plan.blockers:
         lines.append("Cannot continue:")

@@ -40,6 +40,10 @@ MIN_FREE_MB = 1024
 
 LUNA_DIR_CANDIDATES = ("luna", "ai-robot")
 SERVICE_NAME = "luna.service"
+# The Luna Core release Robot Setup is tested with, and the major versions it supports.
+# `robot-setup upgrade-luna` installs this tag by default (never main).
+LUNA_STABLE_TAG = "v1.0.0"
+LUNA_SUPPORTED_MAJORS = (1,)
 # English offline listening model (other languages are named in Luna's language packs).
 VOICE_MODEL_NAME = "vosk-model-small-en-us-0.15"
 
@@ -53,7 +57,7 @@ VOICE_PACKAGES = ("libportaudio2",)
 ALLOWED_PACKAGES = frozenset(LUNA_PACKAGES + VOICE_PACKAGES)
 
 # Natural (Piper) voices and listening languages are read from Luna's folder
-# (robot_hud/voices.json and robot_hud/languages), see catalogue.py.
+# (luna_core/ in Luna Core 1.0+, robot_hud/ in older Luna), see catalogue.py and lunainfo.py.
 
 AI_MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,99}$")
 
@@ -148,6 +152,11 @@ class Paths:
     @property
     def autostart_entry(self):
         return self.home / ".config" / "autostart" / "luna-robot-setup.desktop"
+
+    @property
+    def luna_core_autostart(self):
+        """Written by Luna Core's own scripts/install-service.sh (replaced by Robot Setup)."""
+        return self.home / ".config" / "autostart" / "luna.desktop"
 
     @property
     def autostart_marker(self):

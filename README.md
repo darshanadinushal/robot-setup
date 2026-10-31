@@ -41,8 +41,8 @@ A profile only sets the default selection. You can still turn individual feature
 
 Installs `piper-tts` into Luna's environment and downloads Luna's voices to
 `~/.ai-robot-models/piper` (outside the Luna folder, never in Git). The voice list is read from
-Luna's `robot_hud/voices.json`, and the listening models from her language packs
-(`robot_hud/languages/`), so a voice or language added to Luna is downloaded by the next
+Luna's `luna_core/voices.json`, and the listening models from her language packs
+(`luna_core/languages/`; an older Luna's `robot_hud/` is still read), so a voice or language added to Luna is downloaded by the next
 Install or Repair, with no robot-setup change. Today's voices:
 
 | Language | Voice | Model | Size | Licence |
@@ -74,7 +74,7 @@ Luna keeps using her basic voice until her speech engine supports Piper.
 2. Install it:
 
    ```bash
-   sudo apt install ./robot-setup_0.3.0_all.deb
+   sudo apt install ./robot-setup_0.4.0_all.deb
    ```
 
 3. Open **Robot Setup** from the applications menu, or run `robot-setup`.
@@ -84,15 +84,22 @@ Luna keeps using her basic voice until her speech engine supports Piper.
 Installing the package only installs the wizard. Nothing on the system changes until you confirm
 the plan in the wizard.
 
-**Updating:** the installed package does not follow GitHub. Update Luna first (`git pull` in her
-folder, since robot-setup reads her voices and languages), then build and install the new
-package and run `robot-setup repair` to add anything new, such as a new language's model:
+**Updating:** the installed package does not follow GitHub. Update Luna first, since
+robot-setup reads her voices and languages. Robot Setup works with Luna Core 1.x and recommends
+the stable tag `v1.0.0` (an older Luna without `luna_core/` still works, with a warning in
+`verify`). `upgrade-luna` runs Luna's own `scripts/upgrade-pi.sh`: it backs up her settings,
+memories and plugin choices, checks that the new version starts, and goes back by itself if
+not. `rollback-luna` runs her `scripts/rollback-pi.sh`. Then build and install the new package
+and run `robot-setup repair` to add anything new, such as a new language's model:
 
 ```bash
+robot-setup upgrade-luna v1.0.0          # or: robot-setup rollback-luna [--with-data]
 cd ~/robot-setup && git pull --ff-only && bash packaging/build-deb.sh
 sudo apt install ./build/robot-setup_<version>_all.deb
 robot-setup repair && robot-setup verify
 ```
+
+Plugins are managed inside Luna (Settings > Plugins); Robot Setup does not change them.
 
 ## Command line
 
@@ -108,6 +115,8 @@ robot-setup verify --confirm             # test screen, touch, speaker, micropho
 robot-setup status                       # what Robot Setup installed and checked
 robot-setup repair                       # resume or fix the saved setup
 robot-setup remove                       # undo Robot Setup's changes
+robot-setup upgrade-luna [v1.0.0]        # Luna's upgrade-pi.sh (backup, start check, auto-undo)
+robot-setup rollback-luna [--with-data]  # Luna's rollback-pi.sh
 ```
 
 Useful options: `--profile minimal|standard|custom`, `--with FEATURE`, `--without FEATURE`,
@@ -122,7 +131,8 @@ for system changes: through a password window in the desktop, or through `sudo` 
 Startup files are the exception: they are always removed so Luna stops starting automatically,
 and a copy you changed is saved in `~/.local/state/robot-setup/backups`. If another entry can
 still start Luna, `remove` lists it. Automatic login is put back the way it was, but only if
-Robot Setup turned it on and nobody changed it since. It keeps:
+Robot Setup turned it on and nobody changed it since. If Robot Setup replaced the startup that
+Luna's own `scripts/install-service.sh` made, that startup is put back. It keeps:
 
 - your Luna folder and its `.venv`
 - `~/.luna.env` (your API key and settings)

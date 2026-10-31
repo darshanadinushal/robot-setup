@@ -3,22 +3,31 @@
 Login -> autostart entry -> launcher imports WAYLAND_DISPLAY/DISPLAY into the user manager
 -> `systemctl --user start luna.service` -> Luna (Restart=on-failure, limited).
 Quitting Luna exits with code 0, so it stays closed; a crash is restarted.
+
+Only one startup may exist. Luna Core's own `scripts/install-service.sh` writes the same
+luna.service plus ~/.config/autostart/luna.desktop; for this Luna folder Robot Setup backs those
+up and replaces them (and puts them back on remove). Any other launcher blocks setup.
 """
 from __future__ import annotations
 
 import os
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 
 from ..config import SERVICE_NAME
-from ..files import is_current, remove_managed, write_managed
+from ..files import backup, is_current, remove_managed, write_managed
 from ..system import FAILED, PASSED, PENDING, SKIPPED, WARNING, Check, read_text
 
 FEATURE = "startup"
 SESSION_VARIABLES = ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "XDG_SESSION_TYPE",
                      "XDG_CURRENT_DESKTOP")
 JOURNAL_HINT = "See: journalctl --user -u luna.service"
+MANAGED_MARK = "# Managed by Robot Setup"
+# Luna Core 1.0.0 wrote no marker; later versions add this comment to both files.
+LUNA_CORE_MARK = "# Created by Luna Core scripts/install-service.sh"
+LUNA_CORE_AUTOSTART_COMMENT = "Comment=Start the Luna robot service with this desktop's display"
 
 
 def _systemd_quote(value):
@@ -47,7 +56,7 @@ def unsupported_path(path):
 def render_unit(ctx):
     python = ctx.venv_python
     return (
-        "# Managed by Robot Setup. Repair replaces this file after backing up your changes.\n"
+        f"{MANAGED_MARK}. Repair replaces this file after backing up your changes.\n"
         "[Unit]\n"
         "Description=Luna robot face\n"
         "After=graphical-session.target pipewire.service\n"
@@ -121,10 +130,61 @@ def _startup_locations(ctx):
     return locations
 
 
+def _same_path(a, b):
+    try:
+        return Path(a).resolve() == Path(b).resolve()
+    except (OSError, RuntimeError):
+        return False
+
+
+def _is_luna_core_unit(ctx, text):
+    """luna.service written by Luna Core's scripts/install-service.sh for this Luna folder."""
+    if MANAGED_MARK in text:
+        return False
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("ExecStart="):
+            command = line[len("ExecStart="):].strip().strip('"')
+            return _same_path(command, ctx.luna_dir / "scripts" / "run-pi.sh")
+    return False
+
+
+def _is_luna_core_autostart(text):
+    """~/.config/autostart/luna.desktop from Luna Core: it only (re)starts luna.service."""
+    if LUNA_CORE_MARK not in text and LUNA_CORE_AUTOSTART_COMMENT not in text:
+        return False
+    execs = [line for line in text.splitlines() if line.strip().startswith("Exec=")]
+    return len(execs) == 1 and SERVICE_NAME in execs[0] and "main.py" not in execs[0] \
+        and "run-pi.sh" not in execs[0]
+
+
+def luna_core_startup(ctx):
+    """Startup files made by Luna Core's own scripts/install-service.sh for this Luna folder.
+    Robot Setup replaces them instead of running a second startup next to them."""
+    found = []
+    unit = ctx.paths.systemd_unit
+    if unit.is_file() and ctx.state.owned(unit) is None and \
+            _is_luna_core_unit(ctx, read_text(unit) or ""):
+        found.append(unit)
+    entry = ctx.paths.luna_core_autostart
+    if entry.is_file() and _is_luna_core_autostart(read_text(entry) or ""):
+        found.append(entry)
+    return found
+
+
+def _starts_luna(ctx, line):
+    if "run-pi.sh" in line or str(ctx.luna_dir / "main.py") in line or (
+            "main.py" in line and ("luna" in line.lower() or "ai-robot" in line)):
+        return True
+    # Something else that (re)starts our service would start Luna a second time at login.
+    return SERVICE_NAME in line and any(word in line for word in ("start", "restart"))
+
+
 def conflicts(ctx):
-    """Other ways Luna is already started. Only one startup mechanism may be active."""
-    ours = {ctx.paths.autostart_entry, ctx.paths.systemd_unit}
-    luna_main = str(ctx.luna_dir / "main.py")
+    """Other ways Luna is already started. Only one startup mechanism may be active.
+    Luna Core's own startup for this folder is not a conflict: Robot Setup replaces it."""
+    replaced = set(luna_core_startup(ctx))
+    ours = {ctx.paths.autostart_entry, ctx.paths.systemd_unit, ctx.paths.launcher} | replaced
     found = []
     for path in _startup_locations(ctx):
         if path in ours:
@@ -134,12 +194,12 @@ def conflicts(ctx):
             line = line.strip()
             if line.startswith("#"):
                 continue
-            if "run-pi.sh" in line or luna_main in line or (
-                    "main.py" in line and ("luna" in line.lower() or "ai-robot" in line)):
+            if _starts_luna(ctx, line):
                 found.append(path)
                 break
-    if ctx.paths.systemd_unit.exists() and ctx.state.owned(ctx.paths.systemd_unit) is None:
-        found.append(ctx.paths.systemd_unit)
+    unit = ctx.paths.systemd_unit
+    if unit.exists() and ctx.state.owned(unit) is None and unit not in replaced:
+        found.append(unit)
     return found
 
 
@@ -161,9 +221,28 @@ def write_files(ctx):
         ctx.log("Note: the user service manager is not running yet; Luna starts at next login.")
 
 
+def replace_luna_core_startup(ctx):
+    """Back up and remove Luna Core's own startup files; remove() puts them back. A running
+    Luna keeps running: the service name stays the same, so no second Luna starts."""
+    replaced = ctx.state.data.setdefault("replaced_startup", [])
+    for path in luna_core_startup(ctx):
+        saved = backup(ctx, path)
+        replaced.append({"path": str(path), "backup": str(saved)})
+        ctx.state.save()
+        path.unlink()
+        ctx.log(f"Replaced Luna Core's startup file {path} (saved in {saved})")
+    ctx.state.save()
+
+
 def tasks(ctx):
     from ..engine import Task
-    return [
+    found = luna_core_startup(ctx)
+    replace = [Task("startup-replace-luna-core", FEATURE, "Replace Luna Core's own startup",
+                    tuple(f"Back up and remove {path} (made by Luna's scripts/install-service.sh)"
+                          for path in found),
+                    is_done=lambda c: not luna_core_startup(c),
+                    apply=replace_luna_core_startup)] if found else []
+    return replace + [
         Task("startup-files", FEATURE, "Automatic startup",
              (f"Create {ctx.paths.systemd_unit} (restarts Luna after a crash)",
               f"Create {ctx.paths.launcher}",
@@ -267,8 +346,9 @@ def reboot_check(ctx):
 
 
 def verify(ctx):
-    checks = [Check("startup-files", "Startup files", PASSED if files_current(ctx) else FAILED,
-                    "" if files_current(ctx) else "Run Repair.")]
+    current = files_current(ctx)
+    checks = [Check("startup-files", "Startup files", PASSED if current else FAILED,
+                    "" if current else "Run Repair.")]
     if ctx.device.graphical:
         environment = _systemctl(ctx, "show-environment").stdout
         handed_over = "WAYLAND_DISPLAY=" in environment or "DISPLAY=" in environment
@@ -282,14 +362,38 @@ def verify(ctx):
     return checks
 
 
+def restore_luna_core_startup(ctx):
+    """Put back the Luna Core startup files Robot Setup replaced (if nothing is there now)."""
+    lines = []
+    for item in ctx.state.data.get("replaced_startup") or ():
+        path, saved = Path(item["path"]), Path(item["backup"])
+        if path.exists():
+            lines.append(f"{path}: not restored (a file is already there)")
+        elif saved.is_file():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(saved, path)
+            lines.append(f"{path}: restored (Luna Core's own startup)")
+        else:
+            lines.append(f"{path}: not restored (backup {saved} is missing)")
+    ctx.state.data["replaced_startup"] = []
+    return lines
+
+
 def remove(ctx):
     """Turn automatic startup off. Changed copies of our files are backed up, not kept in
-    place, because a kept autostart entry would still start Luna."""
+    place, because a kept autostart entry would still start Luna. Luna Core's own startup,
+    if Robot Setup replaced it, is put back as it was."""
     _systemctl(ctx, "stop", SERVICE_NAME)
     lines = [f"{path}: {remove_managed(ctx, path, keep_changed=False)}"
              for path, _, _ in managed_files(ctx)]
+    restored = restore_luna_core_startup(ctx)
+    lines.extend(restored)
     _systemctl(ctx, "daemon-reload")
     ctx.state.save()
+    if luna_core_startup(ctx):
+        lines.append("Luna starts with the desktop again through her own startup, as before "
+                     "Robot Setup. To turn that off: bash scripts/install-service.sh --remove")
+        return lines
     remaining = [p for p in (ctx.paths.autostart_entry, ctx.paths.systemd_unit) if p.exists()]
     remaining += conflicts(ctx)
     if remaining:

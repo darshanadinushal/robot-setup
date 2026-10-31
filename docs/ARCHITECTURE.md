@@ -237,6 +237,13 @@ Key decisions:
   autostart entry. Setup is blocked if another mechanism already starts Luna (for example
   `run-pi.sh` in labwc's autostart, LXDE autostart, `wayfire.ini`, `/etc/xdg/autostart`, or another
   user service), so Luna never runs twice.
+- **Luna Core's own startup.** Luna Core's `scripts/install-service.sh` writes the same
+  `luna.service` name plus `~/.config/autostart/luna.desktop`. When both point at the chosen Luna
+  folder (`ExecStart` = `<luna>/scripts/run-pi.sh`, the desktop entry only restarts
+  `luna.service`), they are not a conflict: the `startup-replace-luna-core` task backs them up,
+  removes them and records them in `replaced_startup`; `remove` puts them back if nothing else
+  is there. Changed copies, or files for another folder, still block. Luna Core after 1.0.0 marks
+  its files and refuses to overwrite or remove Robot Setup's (`# Managed by Robot Setup`).
 - **Crash vs. quit.** `Restart=on-failure` with `RestartSec=5`, `StartLimitIntervalSec=300` and
   `StartLimitBurst=5`. Luna's quit button and Esc/Q exit with code 0, so the service stays stopped
   when the user closes Luna on purpose. A crash restarts it, at most five times in five minutes.
@@ -313,7 +320,11 @@ Version 1.0 has **limited rollback**:
   console with password, B1) only if the current setting is still what Robot Setup applied (our
   user, graphical target). If someone changed it since, it is left as it is and reported.
 
-Operating system rollback and Luna version rollback are out of scope for 1.0.
+Operating system rollback is out of scope for 1.0. Luna version upgrades and rollback are Luna
+Core's own scripts, run by `robot-setup upgrade-luna [tag]` (default the stable tag `v1.0.0`) and
+`robot-setup rollback-luna [--with-data]` (`scripts/upgrade-pi.sh` / `rollback-pi.sh`: backup of
+settings, memories and plugin choices, start check, automatic undo). Robot Setup reimplements
+none of it; an older Luna without those scripts gets git instructions instead.
 
 ## 11. Security
 
@@ -328,15 +339,20 @@ Operating system rollback and Luna version rollback are out of scope for 1.0.
 
 ## 12. Luna integration
 
-- Luna is **adopted** from an existing folder that contains `main.py` and `robot_hud/app.py`. The
+- Luna is **adopted** from an existing folder that contains `main.py` and `luna_core/app.py`
+  (Luna Core 1.x) or `robot_hud/app.py` (older Luna). The
   default candidates are `~/luna` and `~/ai-robot`. The user can choose another folder.
+  `lunainfo.py` reads the version from `luna_core/__init__.py` without starting Python; `verify`
+  warns for an older Luna (suggesting `upgrade-luna v1.0.0`) or an unsupported major version.
+  Plugins stay inside Luna (Settings > Plugins); Robot Setup does not manage them.
 - Luna's `.venv` is created with `/usr/bin/python3 -m venv --system-site-packages`, so it uses
   apt's `python3-pygame`.
 - Pinned Python packages: `vosk==0.3.45`, `sounddevice==0.5.6` (voice), `openai==3.37.0` (AI),
   `piper-tts==1.8.0`, `onnxruntime==1.31.0` (natural voice).
 - Voices and languages come from the Luna folder (`catalogue.py`), so Luna is the one source of
-  truth: `robot_hud/voices.json` (natural voices) and `robot_hud/languages/<code>.json` (each
-  language's `listening_model`). Everything is validated before use (safe file names and paths,
+  truth: `luna_core/voices.json` (natural voices) and `luna_core/languages/<code>.json` (each
+  language's `listening_model`; an older Luna's `robot_hud/` copies are used when there is no
+  `luna_core/`). Everything is validated before use (safe file names and paths,
   https base address, 64-character SHA-256, both model files); a missing or invalid catalogue
   blocks the Natural voice feature with "Update Luna". An older Luna without language packs gets
   the English listening model only.
