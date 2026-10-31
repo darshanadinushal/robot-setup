@@ -40,7 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        luna-ref: ${{ fromJSON(inputs.luna_ref && format('["v1.0.0","main","{0}"]', inputs.luna_ref) || '["v1.0.0","main"]') }}
+        luna-ref: ${{ fromJSON(inputs.luna_ref && format('["v1.0.0","v1.0.1","main","{0}"]', inputs.luna_ref) || '["v1.0.0","v1.0.1","main"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4

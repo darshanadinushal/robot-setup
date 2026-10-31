@@ -86,14 +86,14 @@ the plan in the wizard.
 
 **Updating:** the installed package does not follow GitHub. Update Luna first, since
 robot-setup reads her voices and languages. Robot Setup works with Luna Core 1.x and recommends
-the stable tag `v1.0.0` (an older Luna without `luna_core/` still works, with a warning in
+the stable tag `v1.0.1` (an older Luna without `luna_core/` still works, with a warning in
 `verify`). `upgrade-luna` runs Luna's own `scripts/upgrade-pi.sh`: it backs up her settings,
 memories and plugin choices, checks that the new version starts, and goes back by itself if
 not. `rollback-luna` runs her `scripts/rollback-pi.sh`. Then build and install the new package
 and run `robot-setup repair` to add anything new, such as a new language's model:
 
 ```bash
-robot-setup upgrade-luna v1.0.0          # or: robot-setup rollback-luna [--with-data]
+robot-setup upgrade-luna v1.0.1          # or: robot-setup rollback-luna [--with-data]
 cd ~/robot-setup && git pull --ff-only && bash packaging/build-deb.sh
 sudo apt install ./build/robot-setup_<version>_all.deb
 robot-setup repair && robot-setup verify
@@ -115,7 +115,7 @@ robot-setup verify --confirm             # test screen, touch, speaker, micropho
 robot-setup status                       # what Robot Setup installed and checked
 robot-setup repair                       # resume or fix the saved setup
 robot-setup remove                       # undo Robot Setup's changes
-robot-setup upgrade-luna [v1.0.0]        # Luna's upgrade-pi.sh (backup, start check, auto-undo)
+robot-setup upgrade-luna [v1.0.1]        # Luna's upgrade-pi.sh (backup, start check, auto-undo)
 robot-setup rollback-luna [--with-data]  # Luna's rollback-pi.sh
 ```
 

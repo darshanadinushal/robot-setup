@@ -42,7 +42,7 @@ LUNA_DIR_CANDIDATES = ("luna", "ai-robot")
 SERVICE_NAME = "luna.service"
 # The Luna Core release Robot Setup is tested with, and the major versions it supports.
 # `robot-setup upgrade-luna` installs this tag by default (never main).
-LUNA_STABLE_TAG = "v1.0.0"
+LUNA_STABLE_TAG = "v1.0.1"
 LUNA_SUPPORTED_MAJORS = (1,)
 # English offline listening model (other languages are named in Luna's language packs).
 VOICE_MODEL_NAME = "vosk-model-small-en-us-0.15"

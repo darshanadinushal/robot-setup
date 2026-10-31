@@ -321,7 +321,7 @@ Version 1.0 has **limited rollback**:
   user, graphical target). If someone changed it since, it is left as it is and reported.
 
 Operating system rollback is out of scope for 1.0. Luna version upgrades and rollback are Luna
-Core's own scripts, run by `robot-setup upgrade-luna [tag]` (default the stable tag `v1.0.0`) and
+Core's own scripts, run by `robot-setup upgrade-luna [tag]` (default the stable tag `v1.0.1`) and
 `robot-setup rollback-luna [--with-data]` (`scripts/upgrade-pi.sh` / `rollback-pi.sh`: backup of
 settings, memories and plugin choices, start check, automatic undo). Robot Setup reimplements
 none of it; an older Luna without those scripts gets git instructions instead.
@@ -343,7 +343,7 @@ none of it; an older Luna without those scripts gets git instructions instead.
   (Luna Core 1.x) or `robot_hud/app.py` (older Luna). The
   default candidates are `~/luna` and `~/ai-robot`. The user can choose another folder.
   `lunainfo.py` reads the version from `luna_core/__init__.py` without starting Python; `verify`
-  warns for an older Luna (suggesting `upgrade-luna v1.0.0`) or an unsupported major version.
+  warns for an older Luna (suggesting `upgrade-luna v1.0.1`) or an unsupported major version.
   Plugins stay inside Luna (Settings > Plugins); Robot Setup does not manage them.
 - Luna's `.venv` is created with `/usr/bin/python3 -m venv --system-site-packages`, so it uses
   apt's `python3-pygame`.

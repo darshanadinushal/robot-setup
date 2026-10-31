@@ -63,7 +63,7 @@ class LayoutTests(unittest.TestCase):
         self.assertIsNone(lunainfo.version(box.luna))
         check = luna.version_check(box.context())
         self.assertEqual(check.status, "warning")
-        self.assertIn("upgrade-luna v1.0.0", check.detail)
+        self.assertIn("upgrade-luna v1.0.1", check.detail)
         outcome = engine.install(box.context(features=("luna", "voice", "startup")))
         self.assertTrue(outcome.ok, outcome.message)
 
@@ -208,7 +208,7 @@ class LunaScriptCommandTests(unittest.TestCase):
         code, out = self.run_cli("upgrade-luna")
         self.assertEqual(code, 0, out)
         script = str(self.box.luna.resolve() / "scripts" / "upgrade-pi.sh")
-        self.assertEqual(self.runs, [(["bash", script, "v1.0.0"], self.box.luna.resolve())])
+        self.assertEqual(self.runs, [(["bash", script, "v1.0.1"], self.box.luna.resolve())])
         self.assertIn("Luna Core 1.0.0", out)
 
     def test_branch_is_allowed_with_a_note_but_options_are_not(self):
@@ -228,7 +228,7 @@ class LunaScriptCommandTests(unittest.TestCase):
         (self.box.luna / "scripts" / "upgrade-pi.sh").unlink()
         code, out = self.run_cli("upgrade-luna")
         self.assertEqual(code, 1)
-        self.assertIn("git checkout v1.0.0", out)
+        self.assertIn("git checkout v1.0.1", out)
         self.assertEqual(self.runs, [])
 
 
